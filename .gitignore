@@ -32,8 +32,14 @@ ENV/
 # Browser sessions and cookies (99Freelas login state)
 cookies.json
 session.json
+session_cookies.json
 storage_state.json
 *.session
+
+# Local Database & runtime state
+bot_data.json
+*.sqlite3
+*.db
 
 # Logs
 *.log
