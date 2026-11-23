@@ -6,10 +6,10 @@ Este roadmap define as 4 fases de implementação do projeto. Cada item correspo
 
 ### 📌 Fase 1: Motor de Filtragem, Precificação e Propostas
 - [x] **Card 1.1**: Configurar repositório, branches (`main`, `develop`) e skills no `.agents/skills`.
-- [ ] **Card 1.2**: Implementar modelo de dados de projetos e filtro de relevância (descarte de spam e clientes com histórico ruim).
-- [ ] **Card 1.3**: Criar algoritmo de precificação de entrada (cálculo de complexidade com desconto de penetração de mercado).
-- [ ] **Card 1.4**: Desenvolver o gerador de propostas humanizadas (prompt de copywriting baseado no `sales-automator`).
-- [ ] **Card 1.5**: Testes de simulação em projetos reais do 99Freelas sem envio (modo teste).
+- [x] **Card 1.2**: Implementar modelo de dados de projetos e filtro de relevância (descarte de spam e clientes com histórico ruim).
+- [x] **Card 1.3**: Criar algoritmo de precificação de entrada (cálculo de complexidade com desconto de penetração de mercado).
+- [x] **Card 1.4**: Desenvolver o gerador de propostas humanizadas (prompt de copywriting baseado no `sales-automator`).
+- [x] **Card 1.5**: Testes de simulação em projetos reais do 99Freelas sem envio (modo teste).
 
 ---
 
