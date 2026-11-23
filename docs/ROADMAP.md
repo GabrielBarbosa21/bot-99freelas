@@ -29,6 +29,6 @@ Este roadmap define as 4 fases de implementação do projeto. Cada item correspo
 ---
 
 ### 📌 Fase 4: Painel de Controle (Dashboard) & Tarefas
-- [ ] **Card 4.1**: Backend de gestão de propostas e conexões gastas/restantes.
-- [ ] **Card 4.2**: Quadro Kanban interativo para tarefas dos projetos aceitos.
-- [ ] **Card 4.3**: Métricas de conversão e faturamento acumulado.
+- [x] **Card 4.1**: Backend de gestão de propostas e conexões gastas/restantes.
+- [x] **Card 4.2**: Quadro Kanban interativo para tarefas dos projetos aceitos.
+- [x] **Card 4.3**: Métricas de conversão e faturamento acumulado.
