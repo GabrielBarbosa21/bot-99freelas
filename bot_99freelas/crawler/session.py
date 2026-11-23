@@ -25,8 +25,10 @@ class FreelasSession:
 
     def save_cookies(self, cookies: Dict[str, str]) -> None:
         """Salva cookies de sessão em disco de forma segura."""
+        self.cookies_path.parent.mkdir(parents=True, exist_ok=True)
         with open(self.cookies_path, "w", encoding="utf-8") as f:
             json.dump(cookies, f, indent=2)
+            f.flush()
 
     def load_cookies(self) -> Dict[str, str]:
         """Carrega cookies existentes."""

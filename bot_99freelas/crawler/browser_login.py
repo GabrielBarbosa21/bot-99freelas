@@ -3,7 +3,9 @@
 import sys
 import json
 import time
+import threading
 import logging
+from datetime import datetime
 from pathlib import Path
 from bot_99freelas.config import BASE_DIR
 from bot_99freelas.crawler.session import COOKIES_FILE, session_manager
@@ -27,15 +29,28 @@ def run_browser_login() -> bool:
     print(" 🌐 ABRINDO O GOOGLE CHROME PARA LOGIN NO 99FREELAS")
     print("=" * 65)
     print("👉 1. O navegador Google Chrome vai abrir na tela de login.")
-    print("👉 2. Clique em 'Entrar com o Google' e faça o login normalmente.")
-    print("👉 3. Assim que você entrar, o bot capturará os cookies e tokens sozinho!")
+    print("👉 2. Faça login com o Google normalmente na janela aberta.")
+    print("👉 3. O bot detectará automaticamente OU você pode apertar [ENTER]")
+    print("      neste terminal assim que você estiver logado!")
     print("=" * 65 + "\n")
 
     user_data_dir = BASE_DIR / "browser_profile"
     user_data_dir.mkdir(parents=True, exist_ok=True)
 
+    # Thread para captura de ENTER do usuário
+    enter_pressed = threading.Event()
+
+    def listen_for_enter():
+        try:
+            input()
+            enter_pressed.set()
+        except Exception:
+            pass
+
+    input_thread = threading.Thread(target=listen_for_enter, daemon=True)
+    input_thread.start()
+
     with sync_playwright() as p:
-        # Lança o Chrome real do sistema removendo flags de automação para o Google não bloquear
         context = p.chromium.launch_persistent_context(
             user_data_dir=str(user_data_dir),
             channel="chrome",
@@ -51,41 +66,66 @@ def run_browser_login() -> bool:
         page = context.pages[0] if context.pages else context.new_page()
 
         logger.info("Navegando para a página de login do 99Freelas...")
-        page.goto("https://www.99freelas.com.br/login", wait_until="domcontentloaded")
+        try:
+            page.goto("https://www.99freelas.com.br/login", wait_until="domcontentloaded")
+        except Exception as e:
+            logger.warning(f"Aviso na navegação: {e}")
 
-        logger.info("Aguardando login pelo Google...")
-        max_wait_seconds = 300  # 5 minutos para o usuário logar
+        logger.info("Aguardando você concluir o login pelo Google...")
+        print("\n👉 [DICA]: Assim que você ver seu painel/perfil no 99Freelas, aperte ENTER aqui no terminal se não fechar sozinho!\n")
+
+        max_wait_seconds = 360  # 6 minutos
         start_time = time.time()
         logged_in = False
+        last_log_time = 0
 
         while time.time() - start_time < max_wait_seconds:
             try:
-                # Verifica a URL atual e cookies
-                current_url = page.url
-                cookies = context.cookies("https://www.99freelas.com.br")
-                cookie_dict = {c["name"]: c["value"] for c in cookies}
+                # Coleta todos os cookies de todos os domínios
+                all_cookies = context.cookies()
+                freelas_cookies = {
+                    c["name"]: c["value"]
+                    for c in all_cookies
+                    if "99freelas" in c.get("domain", "").lower()
+                }
 
-                # Checa se foi redirecionado para a home/painel logado ou se tem cookie de sessão
-                has_session = any(k in cookie_dict for k in ["PHPSESSID", "remember_me", "user_session", "session"])
-                is_home_or_dashboard = "login" not in current_url and "99freelas.com.br" in current_url
+                # Checa URLs de todas as abas abertas
+                current_urls = [p.url for p in context.pages if not p.is_closed()]
+                is_back_on_freelas = any(
+                    "99freelas.com.br" in u and "login" not in u for u in current_urls
+                )
 
-                if has_session and is_home_or_dashboard:
+                has_auth_cookie = any(
+                    k in freelas_cookies
+                    for k in ["PHPSESSID", "remember_me", "user_session", "session", "user_id"]
+                ) or len(freelas_cookies) >= 3
+
+                # Gatilho de sucesso: automático OU tecla ENTER pressionada
+                if (is_back_on_freelas and has_auth_cookie) or (enter_pressed.is_set() and len(freelas_cookies) > 0):
                     logged_in = True
                     logger.info("🎉 Login detectado com sucesso!")
-                    
+
                     # Salva os cookies capturados
-                    session_manager.save_cookies(cookie_dict)
+                    session_manager.save_cookies(freelas_cookies)
                     print("\n" + "=" * 65)
                     print(" ✅ AUTENTICAÇÃO CONCLUÍDA COM SUCESSO!")
-                    print(f" 💾 {len(cookie_dict)} cookies e tokens salvos em: session_cookies.json")
+                    print(f" 💾 {len(freelas_cookies)} cookies e tokens salvos em: session_cookies.json")
                     print(" 🚀 O bot agora está 100% autorizado a operar em sua conta!")
                     print("=" * 65 + "\n")
                     time.sleep(2)
                     break
+
+                # Feedback periódico
+                now = time.time()
+                if now - last_log_time >= 5:
+                    last_log_time = now
+                    urls_str = ", ".join([u.split("?")[0] for u in current_urls[:2]])
+                    print(f"⏳ [{datetime.now().strftime('%H:%M:%S')}] Aguardando login... (URL: {urls_str} | Cookies 99Freelas: {len(freelas_cookies)})")
+
             except Exception as e:
                 pass
 
-            time.sleep(1.5)
+            time.sleep(1.0)
 
         context.close()
 
