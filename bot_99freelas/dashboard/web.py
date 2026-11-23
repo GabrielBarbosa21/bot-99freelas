@@ -682,13 +682,30 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
 
-def start_web_dashboard(port: int = 5000, open_browser: bool = True, auto_start_monitor: bool = True) -> None:
-    """Inicia o servidor web local e ativa o monitor 24h em background."""
-    server = HTTPServer(("127.0.0.1", port), DashboardRequestHandler)
-    url = f"http://localhost:{port}"
+def start_web_dashboard(
+    port: Optional[int] = None,
+    host: Optional[str] = None,
+    open_browser: Optional[bool] = None,
+    auto_start_monitor: bool = True,
+) -> None:
+    """Inicia o servidor web (local ou em nuvem/Docker) e ativa o monitor 24h em background."""
+    target_host = host or os.getenv("HOST", "0.0.0.0")
+    target_port = port or int(os.getenv("PORT", "5000"))
+
+    # Em contêineres Docker ou ambientes de nuvem, não tenta abrir navegador gráfico
+    is_cloud = bool(
+        os.getenv("DOCKER")
+        or os.getenv("RAILWAY_ENVIRONMENT")
+        or os.getenv("RENDER")
+        or os.getenv("FLY_APP_NAME")
+    )
+    should_open_browser = open_browser if open_browser is not None else (not is_cloud)
+
+    server = HTTPServer((target_host, target_port), DashboardRequestHandler)
+    url = f"http://{'localhost' if target_host in ('0.0.0.0', '127.0.0.1') else target_host}:{target_port}"
 
     print("\n" + "=" * 65)
-    print(f" 🌐 PAINEL DE CONTROLE WEB UNIFICADO 24H: {url}")
+    print(f" 🌐 PAINEL DE CONTROLE WEB UNIFICADO 24H: {url} (Host: {target_host})")
     print("=" * 65)
     print("👉 Acompanhe métricas, quadro Kanban, terminal ao vivo e feed do 99Freelas!")
     print("👉 Faça login na sua conta do 99Freelas diretamente pelo botão no painel.")
@@ -698,7 +715,7 @@ def start_web_dashboard(port: int = 5000, open_browser: bool = True, auto_start_
     if auto_start_monitor:
         monitor_controller.start()
 
-    if open_browser:
+    if should_open_browser:
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()
 
     try:

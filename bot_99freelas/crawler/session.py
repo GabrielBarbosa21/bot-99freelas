@@ -1,5 +1,6 @@
 """Gerenciamento de sessão autenticada e cookies para o 99Freelas."""
 
+import os
 import json
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -31,7 +32,17 @@ class FreelasSession:
             f.flush()
 
     def load_cookies(self) -> Dict[str, str]:
-        """Carrega cookies existentes."""
+        """Carrega cookies existentes do arquivo ou da variável de ambiente SESSION_COOKIES_JSON."""
+        # Suporte a injeção de cookies via variável de ambiente (ideal para nuvem / Docker / Railway)
+        env_cookies = os.getenv("SESSION_COOKIES_JSON")
+        if env_cookies:
+            try:
+                data = json.loads(env_cookies)
+                if isinstance(data, dict) and data:
+                    return data
+            except Exception:
+                pass
+
         if not self.cookies_path.exists():
             return {}
         try:
