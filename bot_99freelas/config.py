@@ -57,7 +57,9 @@ class Settings(BaseModel):
 
     # Inteligência Artificial (Google Gemini)
     GEMINI_API_KEY: str = Field(default_factory=lambda: os.getenv("GEMINI_API_KEY", ""))
-    GEMINI_MODEL: str = Field(default_factory=lambda: os.getenv("GEMINI_MODEL", "gemini-1.5-flash"))
+    GEMINI_MODEL: str = Field(
+        default_factory=lambda: os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
+    )
 
 
 settings = Settings()

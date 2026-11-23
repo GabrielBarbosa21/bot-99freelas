@@ -39,6 +39,7 @@ browser_profile/
 
 # Local Database & runtime state
 bot_data.json
+data/
 *.sqlite3
 *.db
 

@@ -5,11 +5,13 @@ import json
 import logging
 import urllib.request
 import urllib.error
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, TYPE_CHECKING
 
 from bot_99freelas.config import BASE_DIR, settings
 from bot_99freelas.models.project import Project
-from bot_99freelas.chat.models import ChatMessage
+
+if TYPE_CHECKING:
+    from bot_99freelas.chat.models import ChatMessage
 
 logger = logging.getLogger("GeminiAI")
 
@@ -18,23 +20,25 @@ CONFIG_AI_FILE = BASE_DIR / "data" / "gemini_config.json"
 
 
 class GeminiService:
-    """Serviço de inteligência artificial com modelos Google Gemini (1.5 / 2.0 Flash)."""
+    """Serviço de inteligência artificial com modelos Google Gemini (Gemini 3.5 Flash Lite / 3.6 Flash)."""
 
     FALLBACK_MODELS = [
+        ("v1beta", "gemini-3.5-flash-lite"),
+        ("v1beta", "gemini-3.6-flash"),
+        ("v1beta", "gemini-flash-lite-latest"),
+        ("v1beta", "gemini-3.7-flash"),
         ("v1beta", "gemini-2.0-flash"),
-        ("v1beta", "gemini-1.5-flash-latest"),
-        ("v1beta", "gemini-1.5-flash"),
-        ("v1beta", "gemini-1.5-flash-001"),
-        ("v1", "gemini-1.5-flash"),
-        ("v1", "gemini-pro"),
     ]
 
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
-        self._api_key = api_key or os.getenv("GEMINI_API_KEY") or settings.GEMINI_API_KEY
-        self.model = model or os.getenv("GEMINI_MODEL") or settings.GEMINI_MODEL or "gemini-2.0-flash"
+        if api_key is not None:
+            self._api_key = api_key
+        else:
+            self._api_key = os.getenv("GEMINI_API_KEY") or settings.GEMINI_API_KEY or ""
+            self._load_persisted_config()
+        self.model = model or os.getenv("GEMINI_MODEL") or settings.GEMINI_MODEL or "gemini-3.5-flash-lite"
         self.api_version: str = "v1beta"
         self.last_error: str = ""
-        self._load_persisted_config()
 
     def _load_persisted_config(self) -> None:
         """Carrega configuração de IA salva em disco se existir."""
@@ -58,7 +62,9 @@ class GeminiService:
 
     def get_api_key(self) -> str:
         """Retorna a chave da API corrente."""
-        return self._api_key or os.getenv("GEMINI_API_KEY") or settings.GEMINI_API_KEY or ""
+        if self._api_key is not None and self._api_key != "":
+            return self._api_key
+        return self._api_key if self._api_key == "" else (os.getenv("GEMINI_API_KEY") or settings.GEMINI_API_KEY or "")
 
     def auto_discover_model(self, api_key: str) -> Optional[str]:
         """Consulta o Google ListModels para descobrir os modelos suportados por esta chave."""
@@ -76,12 +82,11 @@ class GeminiService:
                     ]
                     # Ordem de preferência de modelos rápidos
                     for preferred in [
+                        "gemini-3.5-flash-lite",
+                        "gemini-3.6-flash",
+                        "gemini-flash-lite-latest",
+                        "gemini-3.7-flash",
                         "gemini-2.0-flash",
-                        "gemini-1.5-flash-latest",
-                        "gemini-1.5-flash",
-                        "gemini-1.5-flash-002",
-                        "gemini-1.5-flash-001",
-                        "gemini-pro"
                     ]:
                         if preferred in available:
                             self.model = preferred
@@ -260,9 +265,9 @@ class GeminiService:
 
     def answer_client_message(
         self,
-        message: ChatMessage,
+        message: Any,
         project: Optional[Project] = None,
-        history: Optional[List[ChatMessage]] = None,
+        history: Optional[List[Any]] = None,
     ) -> Optional[str]:
         """Gera resposta consultiva, empática, persuasiva e com proteção de escopo (no-free-work)."""
         if not self.is_configured():
