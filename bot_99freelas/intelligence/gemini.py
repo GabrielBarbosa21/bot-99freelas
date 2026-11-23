@@ -7,11 +7,14 @@ import urllib.request
 import urllib.error
 from typing import Optional, Dict, Any, List
 
-from bot_99freelas.config import settings
+from bot_99freelas.config import BASE_DIR, settings
 from bot_99freelas.models.project import Project
 from bot_99freelas.chat.models import ChatMessage
 
 logger = logging.getLogger("GeminiAI")
+
+
+CONFIG_AI_FILE = BASE_DIR / "data" / "gemini_config.json"
 
 
 class GeminiService:
@@ -20,6 +23,21 @@ class GeminiService:
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
         self._api_key = api_key or os.getenv("GEMINI_API_KEY") or settings.GEMINI_API_KEY
         self.model = model or os.getenv("GEMINI_MODEL") or settings.GEMINI_MODEL or "gemini-1.5-flash"
+        self.last_error: str = ""
+        self._load_persisted_config()
+
+    def _load_persisted_config(self) -> None:
+        """Carrega configuração de IA salva em disco se existir."""
+        if CONFIG_AI_FILE.exists():
+            try:
+                with open(CONFIG_AI_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if not self._api_key and data.get("api_key"):
+                        self._api_key = data["api_key"]
+                    if data.get("model"):
+                        self.model = data["model"]
+            except Exception:
+                pass
 
     def is_configured(self) -> bool:
         """Verifica se a chave da API do Gemini está presente."""
@@ -30,10 +48,22 @@ class GeminiService:
         """Retorna a chave da API corrente."""
         return self._api_key or os.getenv("GEMINI_API_KEY") or settings.GEMINI_API_KEY or ""
 
-    def set_api_key(self, key: str) -> None:
-        """Define e atualiza a chave da API em tempo de execução."""
+    def set_api_key(self, key: str, model: Optional[str] = None) -> None:
+        """Define e atualiza a chave da API em tempo de execução e persiste em disco."""
         self._api_key = key.strip()
         os.environ["GEMINI_API_KEY"] = self._api_key
+        if model:
+            self.model = model.strip()
+            os.environ["GEMINI_MODEL"] = self.model
+        self.last_error = ""
+
+        # Persiste em data/gemini_config.json
+        try:
+            CONFIG_AI_FILE.parent.mkdir(parents=True, exist_ok=True)
+            with open(CONFIG_AI_FILE, "w", encoding="utf-8") as f:
+                json.dump({"api_key": self._api_key, "model": self.model}, f, indent=2)
+        except Exception:
+            pass
 
     def call_gemini(
         self,
@@ -45,27 +75,29 @@ class GeminiService:
         """Executa chamada HTTP direta para a API do Google Gemini com fallback seguro."""
         api_key = self.get_api_key()
         if not api_key:
+            self.last_error = "Nenhuma chave da API Gemini configurada."
             return None
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent?key={api_key}"
+        clean_model = self.model.strip() or "gemini-1.5-flash"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{clean_model}:generateContent?key={api_key}"
+
+        # Se houver system instruction, combina no prompt para compatibilidade total universal
+        final_prompt = prompt
+        if system_instruction:
+            final_prompt = f"### INSTRUÇÃO DO SISTEMA:\n{system_instruction}\n\n### SOLICITAÇÃO:\n{prompt}"
 
         payload: Dict[str, Any] = {
             "contents": [
                 {
                     "role": "user",
-                    "parts": [{"text": prompt}],
+                    "parts": [{"text": final_prompt}],
                 }
             ],
             "generationConfig": {
-                "temperature": 0.3 if json_mode else 0.7,
+                "temperature": 0.2 if json_mode else 0.7,
                 "maxOutputTokens": 1024,
             },
         }
-
-        if system_instruction:
-            payload["systemInstruction"] = {
-                "parts": [{"text": system_instruction}]
-            }
 
         if json_mode:
             payload["generationConfig"]["responseMimeType"] = "application/json"
@@ -86,10 +118,19 @@ class GeminiService:
                     content = candidates[0].get("content", {})
                     parts = content.get("parts", [])
                     if parts:
+                        self.last_error = ""
                         return parts[0].get("text", "").strip()
         except urllib.error.HTTPError as e:
-            logger.warning(f"Erro HTTP ao chamar Gemini ({e.code}): {e.reason}")
+            err_msg = ""
+            try:
+                err_data = json.loads(e.read().decode("utf-8"))
+                err_msg = err_data.get("error", {}).get("message", e.reason)
+            except Exception:
+                err_msg = str(e.reason)
+            self.last_error = f"Erro HTTP {e.code}: {err_msg}"
+            logger.warning(f"Erro HTTP ao chamar Gemini ({e.code}): {err_msg}")
         except Exception as e:
+            self.last_error = f"Exceção: {str(e)}"
             logger.warning(f"Exceção na comunicação com Gemini: {e}")
 
         return None

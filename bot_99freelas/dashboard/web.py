@@ -410,6 +410,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         <span class="font-semibold text-purple-400 text-xs">Resposta Consultiva Sugerida:</span>
                         <span id="ai-response-badge" class="bg-purple-500/20 text-purple-300 text-[10px] px-2 py-0.5 rounded font-mono">Gemini 1.5 Flash</span>
                     </div>
+                    <div id="ai-chat-error-msg" class="hidden bg-rose-500/10 border border-rose-500/30 text-rose-300 p-2.5 rounded-lg text-[11px] font-mono leading-tight"></div>
                     <div id="ai-chat-response-text" class="text-slate-200 font-sans text-xs whitespace-pre-line leading-relaxed bg-slate-900/60 p-3 rounded-lg border border-slate-800"></div>
                 </div>
             </div>
@@ -764,7 +765,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
                 respBox.classList.remove('hidden');
                 respText.textContent = res.reply;
-                badge.textContent = res.used_gemini ? "✨ Google Gemini AI" : "📋 Motor de Resposta Inteligente";
+                const errBox = document.getElementById('ai-chat-error-msg');
+                if (res.ai_error) {
+                    badge.className = "bg-rose-500/20 text-rose-300 text-[10px] px-2 py-0.5 rounded font-mono font-bold";
+                    badge.textContent = "⚠️ Fallback (Erro na API)";
+                    errBox.textContent = `❌ ${res.ai_error}`;
+                    errBox.classList.remove('hidden');
+                } else {
+                    badge.className = "bg-purple-500/20 text-purple-300 text-[10px] px-2 py-0.5 rounded font-mono font-bold";
+                    badge.textContent = res.used_gemini ? "✨ Google Gemini AI" : "📋 Motor de Resposta Inteligente";
+                    errBox.classList.add('hidden');
+                }
             } catch (e) {
                 alert("Erro ao gerar resposta: " + e.message);
             } finally {
@@ -1064,14 +1075,20 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             key = data.get("api_key", "").strip()
             model = data.get("model", "gemini-1.5-flash").strip()
             if key:
-                gemini_service.set_api_key(key)
-                if model:
-                    gemini_service.model = model
-                self._send_json({
-                    "success": True,
-                    "message": "Chave da IA Gemini salva com sucesso!",
-                    "model": gemini_service.model
-                })
+                gemini_service.set_api_key(key, model)
+                test_call = gemini_service.call_gemini("Diga 'OK' em 1 palavra.", timeout=8)
+                if test_call:
+                    self._send_json({
+                        "success": True,
+                        "message": f"Chave validada com sucesso no Google Gemini ({gemini_service.model})!",
+                        "model": gemini_service.model
+                    })
+                else:
+                    err = gemini_service.last_error or "A API do Google Gemini recusou a chave informada."
+                    self._send_json({
+                        "success": False,
+                        "error": f"Chave salva, mas teste de conexão falhou: {err}"
+                    }, 400)
             else:
                 self._send_json({"success": False, "error": "Chave de API não informada."}, 400)
 
@@ -1088,14 +1105,29 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             classifier = IntentClassifier()
             responder = ChatResponder()
             analysis = classifier.classify(msg_text)
-            reply = responder.generate_reply(analysis, msg_obj)
+
+            ai_error = None
+            used_gemini = False
+            reply = ""
+
+            if gemini_service.is_configured():
+                ai_reply = gemini_service.answer_client_message(msg_obj)
+                if ai_reply and len(ai_reply.strip()) > 15:
+                    reply = ai_reply.strip()
+                    used_gemini = True
+                else:
+                    ai_error = gemini_service.last_error or "Google Gemini retornou resposta vazia ou erro de autenticação."
+                    reply = responder.generate_reply(analysis, msg_obj)
+            else:
+                reply = responder.generate_reply(analysis, msg_obj)
 
             self._send_json({
                 "success": True,
                 "intent": analysis.intent.value,
                 "is_scope_creep": analysis.is_scope_creep,
                 "reply": reply,
-                "used_gemini": gemini_service.is_configured()
+                "used_gemini": used_gemini,
+                "ai_error": ai_error
             })
 
         elif parsed.path == "/api/kanban/move":
