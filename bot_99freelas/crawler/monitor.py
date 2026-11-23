@@ -11,6 +11,8 @@ from bot_99freelas.filters.relevance import ProjectFilter, FilterResult
 from bot_99freelas.pricing.calculator import PricingCalculator
 from bot_99freelas.proposals.generator import ProposalGenerator
 from bot_99freelas.notifier.telegram import telegram_notifier
+from bot_99freelas.crawler.submitter import proposal_submitter
+from bot_99freelas.config import settings
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("FreelasMonitor")
@@ -84,7 +86,16 @@ class FreelasMonitor:
 
         logger.info(f"✨ Proposta gerada com sucesso! Valor: R$ {proposal.price:.2f} (Prazo: {proposal.delivery_days}d)")
 
-        # 5. Notificação via Telegram
+        # 5. Despacho 100% Autônomo se o Score for alto
+        if settings.AUTO_SUBMIT_ENABLED and eval_result.score >= settings.AUTO_SUBMIT_MIN_SCORE:
+            logger.info(f"⚡ [MODO 100% AUTÔNOMO] Score alto ({eval_result.score:.1f} >= {settings.AUTO_SUBMIT_MIN_SCORE}). Enviando proposta diretamente...")
+            sub_res = proposal_submitter.submit(project, proposal)
+            if sub_res.success:
+                logger.info(f"🚀 Proposta despachada com sucesso no 99Freelas! ({sub_res.message})")
+            else:
+                logger.warning(f"⚠️ Não foi possível despachar automaticamente: {sub_res.message}")
+
+        # 6. Notificação via Telegram (se habilitado)
         await telegram_notifier.send_proposal_alert(project, proposal)
 
     async def run_loop(self, single_run: bool = False) -> None:

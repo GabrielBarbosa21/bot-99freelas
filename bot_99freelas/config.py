@@ -40,6 +40,15 @@ class Settings(BaseModel):
     MIN_BUDGET: float = Field(default_factory=lambda: float(os.getenv("MIN_BUDGET", "100.0")))
     MARKET_DISCOUNT_PERCENTAGE: float = Field(default_factory=lambda: float(os.getenv("MARKET_DISCOUNT_PERCENTAGE", "20.0")))
 
+    # Modo 100% Autônomo (Despacho direto no 99Freelas)
+    AUTO_SUBMIT_ENABLED: bool = Field(
+        default_factory=lambda: os.getenv("AUTO_SUBMIT_ENABLED", "true").lower() in ("true", "1", "yes")
+    )
+    AUTO_SUBMIT_MIN_SCORE: float = Field(
+        default_factory=lambda: float(os.getenv("AUTO_SUBMIT_MIN_SCORE", "80.0"))
+    )
+
+    # Notificações no Telegram (Opcional)
     TELEGRAM_ALERT_ENABLED: bool = Field(
         default_factory=lambda: os.getenv("TELEGRAM_ALERT_ENABLED", "false").lower() in ("true", "1", "yes")
     )
