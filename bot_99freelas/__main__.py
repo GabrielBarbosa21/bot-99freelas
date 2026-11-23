@@ -27,6 +27,9 @@ def main() -> None:
     # Comando: monitor
     subparsers.add_parser("monitor", help="Inicia o monitor assíncrono em background")
 
+    # Comando: login
+    subparsers.add_parser("login", help="Abre o navegador Chrome para login com Google e captura de sessão")
+
     # Comando: test
     test_parser = subparsers.add_parser("test", help="Testa avaliação e proposta de um projeto específico")
     test_parser.add_argument("--title", type=str, required=True, help="Título do projeto")
@@ -49,6 +52,9 @@ def main() -> None:
             asyncio.run(monitor.run_loop())
         except KeyboardInterrupt:
             print("\n🛑 Monitor encerrado com sucesso.")
+    elif args.command == "login":
+        from bot_99freelas.crawler.browser_login import run_browser_login
+        run_browser_login()
     elif args.command == "test":
         test_custom_project(
             title=args.title,

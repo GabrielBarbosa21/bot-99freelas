@@ -34,6 +34,7 @@ cookies.json
 session.json
 session_cookies.json
 storage_state.json
+browser_profile/
 *.session
 
 # Local Database & runtime state
