@@ -78,3 +78,65 @@ def test_valid_project_accepted():
     res = filt.evaluate(project)
     assert res.accepted
     assert res.score >= 70.0
+
+
+def test_sniper_target_stack_bonus():
+    filt = ProjectFilter(min_budget=100.0)
+    project = Project(
+        id="5",
+        url="https://99freelas.com.br/project/5",
+        title="Criar Bot de Web Scraping e Integração com API em Python",
+        description="Desenvolver um scraper usando Playwright e FastAPI para automação de dados.",
+        category="Python",
+        budget_min=300.0,
+        budget_max=600.0,
+        proposals_count=2,
+        client=ClientProfile(
+            name="Cliente Premium",
+            projects_published=5,
+            projects_awarded=4,
+            rating=5.0,
+            reviews_count=4
+        )
+    )
+    res = filt.evaluate(project)
+    assert res.accepted
+    assert res.score >= 90.0  # Sniper score
+    assert any("Sniper" in r for r in res.reasons)
+
+
+def test_out_of_scope_discard():
+    filt = ProjectFilter()
+    project = Project(
+        id="6",
+        url="https://99freelas.com.br/project/6",
+        title="Criação de Logotipo e Identidade Visual para Loja",
+        description="Preciso de um flyer e cartão de visita além do logo completo.",
+        category="Design",
+        budget_min=200.0,
+        budget_max=300.0,
+        client=ClientProfile(name="Loja Roupas", projects_published=1)
+    )
+    res = filt.evaluate(project)
+    assert not res.accepted
+    assert res.score == 0.0
+    assert any("fora do escopo" in r.lower() for r in res.reasons)
+
+
+def test_fast_delivery_bonus():
+    filt = ProjectFilter(min_budget=100.0)
+    project = Project(
+        id="7",
+        url="https://99freelas.com.br/project/7",
+        title="Ajuste simples urgente em script Python",
+        description="Preciso de uma correção rápida em um script de automação hoje mesmo.",
+        category="Python",
+        budget_min=150.0,
+        budget_max=200.0,
+        proposals_count=1,
+        client=ClientProfile(name="Agência Rápida", projects_published=2)
+    )
+    res = filt.evaluate(project)
+    assert res.accepted
+    assert any("Quick Win" in r for r in res.reasons)
+

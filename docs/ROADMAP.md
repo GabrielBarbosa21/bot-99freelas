@@ -32,3 +32,12 @@ Este roadmap define as 4 fases de implementação do projeto. Cada item correspo
 - [x] **Card 4.1**: Backend de gestão de propostas e conexões gastas/restantes.
 - [x] **Card 4.2**: Quadro Kanban interativo para tarefas dos projetos aceitos.
 - [x] **Card 4.3**: Métricas de conversão e faturamento acumulado.
+
+---
+
+### 📌 Fase 5: Operação Contínua 24h & Modo Sniper
+- [x] **Card 5.1**: Unificação do Monitor 24h diretamente no Painel Web (`http://localhost:5000`) com terminal de logs ao vivo e controle de pausa/ativação.
+- [x] **Card 5.2**: Filtro Sniper calibrado para oportunidades de desenvolvimento (Python, Automação, APIs, Scraping, IA, Bots) e descarte silencioso de categorias fora de escopo.
+- [x] **Card 5.3**: Motor de resiliência e auto-recuperação contínua 24h (retentativas com backoff exponencial, checagem contínua de sessão e rotação automática de logs).
+- [x] **Card 5.4**: Inicialização automática no Windows (`shell:startup`) e modo silencioso em segundo plano (`iniciar_silencioso.vbs`, `parar_bot.bat`).
+

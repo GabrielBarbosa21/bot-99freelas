@@ -1,14 +1,15 @@
-"""Servidor Web do Painel de Controle e Quadro Kanban Interativo (Card #9)."""
+"""Servidor Web do Painel de Controle Unificado com Monitor 24h e Terminal ao Vivo (Cards 5.1 & 5.3)."""
 
 import json
 import logging
 import webbrowser
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse
 from bot_99freelas.dashboard.service import dashboard_service
 from bot_99freelas.dashboard.kanban import kanban_manager
 from bot_99freelas.dashboard.models import TaskStatus
+from bot_99freelas.crawler.controller import monitor_controller
 from bot_99freelas.storage.db import db
 
 logger = logging.getLogger("WebDashboard")
@@ -18,23 +19,47 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Painel de Controle | Bot 99Freelas</title>
+    <title>Painel de Controle | Bot 99Freelas 24h</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Inter', sans-serif; }
+        .font-mono-code { font-family: 'JetBrains Mono', monospace; }
+        /* Scrollbar customizada para terminal */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
     </style>
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen">
-    <!-- Header -->
-    <header class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-50">
+    <!-- Header Principal -->
+    <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
             <div class="flex items-center space-x-3">
                 <span class="text-2xl">🤖</span>
                 <span class="font-bold text-lg text-white">Bot 99Freelas</span>
-                <span class="bg-emerald-500/10 text-emerald-400 text-xs px-2.5 py-0.5 rounded-full border border-emerald-500/20 font-medium">● Ao Vivo</span>
+                
+                <!-- Status do Monitor 24h -->
+                <div id="monitor-badge-container">
+                    <span id="monitor-badge" class="bg-slate-800 text-slate-400 text-xs px-2.5 py-0.5 rounded-full border border-slate-700 font-medium">
+                        Verificando...
+                    </span>
+                </div>
+
+                <!-- Status da Sessão de Cookies -->
+                <div id="session-badge-container">
+                    <span id="session-badge" class="bg-slate-800 text-slate-400 text-xs px-2.5 py-0.5 rounded-full border border-slate-700 font-medium">
+                        🔑 Sessão
+                    </span>
+                </div>
             </div>
-            <div class="flex items-center space-x-4">
+
+            <!-- Botões de Ação do Header -->
+            <div class="flex items-center space-x-3">
+                <button id="btn-toggle-monitor" onclick="toggleMonitor()" class="text-xs font-semibold px-3.5 py-1.5 rounded-lg border transition shadow-sm bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500/30">
+                    ▶ Ligar Monitor
+                </button>
                 <button onclick="fetchData()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg border border-slate-700 transition">
                     🔄 Atualizar
                 </button>
@@ -70,7 +95,33 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
         </div>
 
-        <!-- Quadro Kanban -->
+        <!-- Terminal de Operação ao Vivo (Card 5.1) -->
+        <section class="space-y-3">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                    <span class="text-base font-bold text-white">📟 Terminal de Operação ao Vivo</span>
+                    <span id="terminal-pulse" class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                    <span id="terminal-status-text" class="text-xs text-slate-400 font-mono">Varredura contínua ativa</span>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <button onclick="clearTerminalLogs()" class="text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white px-2.5 py-1 rounded border border-slate-700 transition">
+                        Limpar
+                    </button>
+                    <label class="flex items-center space-x-1.5 text-xs text-slate-400 cursor-pointer">
+                        <input type="checkbox" id="chk-autoscroll" checked class="rounded bg-slate-800 border-slate-700 text-emerald-500 focus:ring-0">
+                        <span>Auto-rolar</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="bg-black/90 border border-slate-800 rounded-xl p-4 shadow-inner">
+                <div id="terminal-console" class="font-mono-code text-xs text-slate-300 h-64 overflow-y-auto space-y-1 select-text">
+                    <div class="text-slate-500">// Terminal sincronizado com o monitor 24h em background...</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Quadro Kanban de Execução -->
         <section class="space-y-4">
             <div class="flex items-center justify-between">
                 <div>
@@ -123,14 +174,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         <!-- Histórico Recente de Oportunidades do Feed -->
         <section class="space-y-4">
-            <h2 class="text-xl font-bold text-white">📡 Oportunidades Monitoradas Recentemente</h2>
+            <h2 class="text-xl font-bold text-white">📡 Oportunidades Monitoradas (Feed 99Freelas)</h2>
             <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
                 <table class="min-w-full divide-y divide-slate-800 text-left text-sm">
                     <thead class="bg-slate-800/40 text-slate-400 text-xs uppercase font-semibold">
                         <tr>
                             <th class="px-6 py-3">Projeto</th>
                             <th class="px-6 py-3">Concorrência</th>
-                            <th class="px-6 py-3">Score</th>
+                            <th class="px-6 py-3">Score Sniper</th>
                             <th class="px-6 py-3">Status</th>
                             <th class="px-6 py-3 text-right">Ação</th>
                         </tr>
@@ -148,6 +199,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     </main>
 
     <script>
+        let isMonitorRunning = false;
+        let lastLogCount = 0;
+
         async function fetchData() {
             try {
                 const [resM, resK, resP] = await Promise.all([
@@ -174,6 +228,98 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             } catch (e) {
                 console.error("Erro ao carregar dados:", e);
             }
+        }
+
+        async function fetchMonitorState() {
+            try {
+                const [resStatus, resLogs] = await Promise.all([
+                    fetch('/api/monitor/status').then(r => r.json()),
+                    fetch('/api/monitor/logs').then(r => r.json())
+                ]);
+
+                isMonitorRunning = resStatus.running;
+                const badge = document.getElementById('monitor-badge');
+                const btnToggle = document.getElementById('btn-toggle-monitor');
+                const pulse = document.getElementById('terminal-pulse');
+                const statusText = document.getElementById('terminal-status-text');
+
+                if (isMonitorRunning) {
+                    badge.className = "bg-emerald-500/10 text-emerald-400 text-xs px-2.5 py-0.5 rounded-full border border-emerald-500/20 font-medium";
+                    badge.innerHTML = "🟢 Monitor Ativo 24h";
+                    btnToggle.className = "text-xs font-semibold px-3.5 py-1.5 rounded-lg border transition shadow-sm bg-rose-600 hover:bg-rose-500 text-white border-rose-500/30";
+                    btnToggle.textContent = "⏸ Pausar Monitor";
+                    pulse.classList.remove('hidden');
+                    statusText.textContent = `Varredura contínua ativa (${resStatus.cycles_completed} ciclos | última: ${resStatus.last_scan})`;
+                } else {
+                    badge.className = "bg-rose-500/10 text-rose-400 text-xs px-2.5 py-0.5 rounded-full border border-rose-500/20 font-medium";
+                    badge.innerHTML = "🔴 Monitor Pausado";
+                    btnToggle.className = "text-xs font-semibold px-3.5 py-1.5 rounded-lg border transition shadow-sm bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500/30";
+                    btnToggle.textContent = "▶ Iniciar Monitor";
+                    pulse.classList.add('hidden');
+                    statusText.textContent = "Monitor em pausa";
+                }
+
+                // Sessão
+                const sessionBadge = document.getElementById('session-badge');
+                if (resStatus.session_valid) {
+                    sessionBadge.className = "bg-emerald-500/10 text-emerald-400 text-xs px-2.5 py-0.5 rounded-full border border-emerald-500/20 font-medium";
+                    sessionBadge.innerHTML = "🔑 Sessão Ativa";
+                } else {
+                    sessionBadge.className = "bg-amber-500/10 text-amber-400 text-xs px-2.5 py-0.5 rounded-full border border-amber-500/20 font-medium";
+                    sessionBadge.innerHTML = "⚠️ Sessão Ausente/Expirada";
+                }
+
+                // Render logs
+                renderTerminalLogs(resLogs.logs || []);
+            } catch (e) {
+                console.error("Erro ao consultar status do monitor:", e);
+            }
+        }
+
+        async function toggleMonitor() {
+            const endpoint = isMonitorRunning ? '/api/monitor/stop' : '/api/monitor/start';
+            await fetch(endpoint, { method: 'POST' });
+            fetchMonitorState();
+        }
+
+        function renderTerminalLogs(logs) {
+            const consoleEl = document.getElementById('terminal-console');
+            if (logs.length === lastLogCount) return;
+            lastLogCount = logs.length;
+
+            if (logs.length === 0) {
+                consoleEl.innerHTML = '<div class="text-slate-500">// Aguardando registros do monitor...</div>';
+                return;
+            }
+
+            consoleEl.innerHTML = logs.map(line => {
+                let colorClass = "text-slate-300";
+                if (line.includes("APROVADO") || line.includes("SUCESSO") || line.includes("Prioridade")) {
+                    colorClass = "text-emerald-400 font-semibold";
+                } else if (line.includes("Descartado")) {
+                    colorClass = "text-slate-500";
+                } else if (line.includes("MODO AUTÔNOMO")) {
+                    colorClass = "text-amber-300 font-semibold";
+                } else if (line.includes("⚠️") || line.includes("Aviso")) {
+                    colorClass = "text-amber-400";
+                } else if (line.includes("❌") || line.includes("Erro")) {
+                    colorClass = "text-rose-400 font-semibold";
+                } else if (line.includes("📡") || line.includes("🔎")) {
+                    colorClass = "text-sky-300";
+                }
+                return `<div class="${colorClass}">${escapeHtml(line)}</div>`;
+            }).join('');
+
+            const autoScroll = document.getElementById('chk-autoscroll').checked;
+            if (autoScroll) {
+                consoleEl.scrollTop = consoleEl.scrollHeight;
+            }
+        }
+
+        async function clearTerminalLogs() {
+            await fetch('/api/monitor/clear-logs', { method: 'POST' });
+            lastLogCount = 0;
+            document.getElementById('terminal-console').innerHTML = '<div class="text-slate-500">// Histórico de logs limpo.</div>';
         }
 
         function renderKanbanColumn(containerId, badgeId, tasks, colType) {
@@ -248,21 +394,23 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 return;
             }
 
-            projects.slice(0, 10).forEach(p => {
+            projects.slice(0, 15).forEach(p => {
                 const tr = document.createElement('tr');
                 tr.className = "hover:bg-slate-800/30 transition";
                 const isApproved = p.status === 'approved';
                 const statusBadge = isApproved 
-                    ? '<span class="bg-emerald-500/10 text-emerald-400 text-xs px-2.5 py-0.5 rounded-full border border-emerald-500/20">Aprovado</span>'
+                    ? '<span class="bg-emerald-500/10 text-emerald-400 text-xs px-2.5 py-0.5 rounded-full border border-emerald-500/20 font-medium">Aprovado</span>'
                     : '<span class="bg-rose-500/10 text-rose-400 text-xs px-2.5 py-0.5 rounded-full border border-rose-500/20">Descartado</span>';
 
                 tr.innerHTML = `
                     <td class="px-6 py-4 font-medium text-slate-200">
                         <div class="line-clamp-1">${escapeHtml(p.title)}</div>
-                        <div class="text-xs text-slate-500 mt-0.5">${p.client_name || 'Cliente'}</div>
+                        <div class="text-xs text-slate-500 mt-0.5">${escapeHtml(p.client_name || 'Cliente')}</div>
                     </td>
                     <td class="px-6 py-4 text-slate-400 text-xs">${p.proposals_count} propostas</td>
-                    <td class="px-6 py-4 text-xs font-semibold ${p.score >= 70 ? 'text-emerald-400' : 'text-slate-400'}">${p.score.toFixed(1)}/100</td>
+                    <td class="px-6 py-4 text-xs font-semibold ${p.score >= 90 ? 'text-emerald-300 font-bold' : (p.score >= 70 ? 'text-emerald-400' : 'text-slate-400')}">
+                        ${p.score.toFixed(1)}/100
+                    </td>
                     <td class="px-6 py-4">${statusBadge}</td>
                     <td class="px-6 py-4 text-right">
                         <a href="${p.url}" target="_blank" class="text-xs text-blue-400 hover:text-blue-300 font-medium">Abrir ↗</a>
@@ -277,9 +425,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
         }
 
-        // Carrega inicialmente e atualiza a cada 10s
+        // Inicialização
         fetchData();
+        fetchMonitorState();
         setInterval(fetchData, 10000);
+        setInterval(fetchMonitorState, 3000);
     </script>
 </body>
 </html>
@@ -287,10 +437,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
 
 class DashboardRequestHandler(BaseHTTPRequestHandler):
-    """Manipulador de requisições do Dashboard Web."""
+    """Manipulador de requisições do Dashboard Web Unificado."""
 
     def log_message(self, format, *args):
-        # Desativa logs HTTP excessivos no terminal
+        # Desativa logs HTTP de acesso no terminal
         pass
 
     def _send_json(self, data: dict, status: int = 200) -> None:
@@ -328,9 +478,14 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         elif path == "/api/projects":
             projs_dict = db._data.get("projects", {})
             projs_list = list(projs_dict.values())
-            # Ordena pelos vistos mais recentemente
             projs_list.reverse()
             self._send_json(projs_list)
+
+        elif path == "/api/monitor/status":
+            self._send_json(monitor_controller.get_status())
+
+        elif path == "/api/monitor/logs":
+            self._send_json({"logs": monitor_controller.get_logs()})
 
         else:
             self.send_response(404)
@@ -345,7 +500,19 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         except Exception:
             data = {}
 
-        if parsed.path == "/api/kanban/move":
+        if parsed.path == "/api/monitor/start":
+            res = monitor_controller.start()
+            self._send_json(res)
+
+        elif parsed.path == "/api/monitor/stop":
+            res = monitor_controller.stop()
+            self._send_json(res)
+
+        elif parsed.path == "/api/monitor/clear-logs":
+            monitor_controller.clear_logs()
+            self._send_json({"success": True})
+
+        elif parsed.path == "/api/kanban/move":
             task_id = data.get("task_id")
             new_status = data.get("new_status")
             if task_id and new_status:
@@ -370,16 +537,20 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
 
-def start_web_dashboard(port: int = 5000, open_browser: bool = True) -> None:
-    """Inicia o servidor web local e abre a interface no navegador."""
+def start_web_dashboard(port: int = 5000, open_browser: bool = True, auto_start_monitor: bool = True) -> None:
+    """Inicia o servidor web local e ativa o monitor 24h em background."""
     server = HTTPServer(("127.0.0.1", port), DashboardRequestHandler)
     url = f"http://localhost:{port}"
 
     print("\n" + "=" * 65)
-    print(f" 🌐 PAINEL DE CONTROLE WEB INICIADO: {url}")
+    print(f" 🌐 PAINEL DE CONTROLE WEB UNIFICADO 24H: {url}")
     print("=" * 65)
-    print("👉 Acompanhe métricas, quadro Kanban e feed de projetos ao vivo!")
+    print("👉 Acompanhe métricas, quadro Kanban, terminal ao vivo e feed do 99Freelas!")
     print("👉 Pressione Ctrl+C para encerrar o painel.\n")
+
+    # Inicia automaticamente o monitor em segundo plano (Card 5.1)
+    if auto_start_monitor:
+        monitor_controller.start()
 
     if open_browser:
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()
@@ -387,7 +558,8 @@ def start_web_dashboard(port: int = 5000, open_browser: bool = True) -> None:
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\n🛑 Painel web encerrado.")
+        print("\n🛑 Encerrando painel web e monitor...")
+        monitor_controller.stop()
         server.server_close()
 
 

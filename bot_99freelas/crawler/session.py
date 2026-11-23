@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from typing import Optional, Dict
+from typing import Optional, Dict, Any
 from bot_99freelas.config import BASE_DIR, settings
 
 COOKIES_FILE = BASE_DIR / "session_cookies.json"
@@ -51,6 +51,29 @@ class FreelasSession:
         """Verifica se existem cookies de sessão gravados."""
         cookies = self.load_cookies()
         return bool(cookies)
+
+    def verify_session_health(self) -> Dict[str, Any]:
+        """Verifica a integridade e validade da sessão salva."""
+        cookies = self.load_cookies()
+        if not cookies:
+            return {
+                "valid": False,
+                "has_cookies": False,
+                "cookie_count": 0,
+                "message": "Nenhum cookie de sessão encontrado. Execute 'iniciar_login.bat' para autenticar."
+            }
+
+        # Checa presença de cookies de autenticação do 99Freelas
+        has_jsession = "JSESSIONID" in cookies or any("session" in k.lower() for k in cookies)
+        has_auth_hash = any(k in cookies for k in ["kmlicn", "kmlicin", "sgcn"])
+
+        is_valid = has_jsession or has_auth_hash
+        return {
+            "valid": is_valid,
+            "has_cookies": True,
+            "cookie_count": len(cookies),
+            "message": "Sessão válida e ativa no 99Freelas." if is_valid else "Cookies presentes, mas podem estar expirados."
+        }
 
 
 session_manager = FreelasSession()

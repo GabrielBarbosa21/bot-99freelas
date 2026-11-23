@@ -1,10 +1,12 @@
-"""Monitor assíncrono contínuo de novos projetos (Daemon de Background)."""
+"""Monitor assíncrono contínuo de novos projetos com resiliência 24h e integração Web (Cards 5.1 & 5.3)."""
 
 import asyncio
 import logging
+from logging.handlers import RotatingFileHandler
 import urllib.request
-from typing import List, Optional
+from typing import List, Optional, Callable
 from datetime import datetime
+from pathlib import Path
 
 from bot_99freelas.models.project import Project
 from bot_99freelas.storage.db import db
@@ -15,14 +17,41 @@ from bot_99freelas.crawler.session import session_manager
 from bot_99freelas.crawler.parser import FreelasParser
 from bot_99freelas.notifier.telegram import telegram_notifier
 from bot_99freelas.crawler.submitter import proposal_submitter
-from bot_99freelas.config import settings
+from bot_99freelas.config import BASE_DIR, settings
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+# Configuração de rotação segura de logs em arquivo (Card 5.3)
+LOGS_DIR = BASE_DIR / "logs"
+try:
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+except Exception:
+    pass
+
+LOG_FILE = LOGS_DIR / "bot_99freelas.log"
+
 logger = logging.getLogger("FreelasMonitor")
+logger.setLevel(logging.INFO)
+
+# Evita adicionar múltiplos handlers em reloads
+if not logger.handlers:
+    try:
+        file_handler = RotatingFileHandler(
+            LOG_FILE,
+            maxBytes=5 * 1024 * 1024,  # 5 MB por arquivo
+            backupCount=3,
+            encoding="utf-8"
+        )
+        file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+        logger.addHandler(file_handler)
+    except Exception:
+        pass
+
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+    logger.addHandler(console_handler)
 
 
 class FreelasMonitor:
-    """Serviço contínuo para monitoramento de novos projetos no 99Freelas."""
+    """Serviço contínuo para monitoramento resiliente de projetos no 99Freelas."""
 
     FEED_URLS = [
         "https://www.99freelas.com.br/projects?categoria=web-mobile-e-software",
@@ -31,17 +60,63 @@ class FreelasMonitor:
 
     def __init__(
         self,
-        check_interval_seconds: int = 60,  # 60 segundos por ciclo
+        check_interval_seconds: int = 60,
         auto_send_threshold_score: float = 80.0,
+        log_callback: Optional[Callable[[str], None]] = None,
     ):
         self.check_interval_seconds = check_interval_seconds
         self.auto_send_threshold_score = auto_send_threshold_score
+        self.log_callback = log_callback
+        self.stop_requested = False
+
         self.project_filter = ProjectFilter()
         self.pricing_calc = PricingCalculator()
         self.proposal_gen = ProposalGenerator(pricing_calc=self.pricing_calc)
 
+    def log(self, message: str, level: str = "info") -> None:
+        """Emite mensagem de log para console, arquivo rotativo e callback web."""
+        print(message)
+        if level == "warning":
+            logger.warning(message)
+        elif level == "error":
+            logger.error(message)
+        else:
+            logger.info(message)
+
+        if self.log_callback:
+            try:
+                self.log_callback(message)
+            except Exception:
+                pass
+
+    def stop(self) -> None:
+        """Sinaliza parada imediata para o ciclo contínuo."""
+        self.stop_requested = True
+
+    async def _fetch_url_with_retry(self, url: str, headers: dict, max_retries: int = 3) -> Optional[str]:
+        """Executa requisição HTTP resiliente com retentativas e backoff exponencial (Card 5.3)."""
+        loop = asyncio.get_event_loop()
+        for attempt in range(1, max_retries + 1):
+            if self.stop_requested:
+                return None
+            try:
+                req = urllib.request.Request(url, headers=headers)
+                html = await loop.run_in_executor(
+                    None,
+                    lambda: urllib.request.urlopen(req, timeout=12).read().decode("utf-8", errors="ignore")
+                )
+                return html
+            except Exception as e:
+                backoff = 2 ** attempt
+                if attempt < max_retries:
+                    self.log(f"⚠️ [Tentativa {attempt}/{max_retries}] Falha na rede ao consultar '{url}': {e}. Reconectando em {backoff}s...", level="warning")
+                    await asyncio.sleep(backoff)
+                else:
+                    self.log(f"❌ Erro definitivo ao consultar '{url}' após {max_retries} tentativas: {e}", level="error")
+        return None
+
     async def fetch_latest_projects(self) -> List[Project]:
-        """Busca projetos reais no feed do 99Freelas usando a sessão autenticada."""
+        """Busca projetos no feed do 99Freelas com resiliência contra falhas."""
         cookie_header = session_manager.get_cookie_header()
         headers = {
             **session_manager.DEFAULT_HEADERS,
@@ -50,20 +125,14 @@ class FreelasMonitor:
 
         all_projects: List[Project] = []
         for url in self.FEED_URLS:
-            try:
-                req = urllib.request.Request(url, headers=headers)
-                # Executa a requisição HTTP em thread pool para não travar o event loop
-                loop = asyncio.get_event_loop()
-                html = await loop.run_in_executor(
-                    None,
-                    lambda: urllib.request.urlopen(req, timeout=12).read().decode("utf-8", errors="ignore")
-                )
+            if self.stop_requested:
+                break
+            html = await self._fetch_url_with_retry(url, headers=headers)
+            if html:
                 projects = FreelasParser.parse_projects_page(html)
                 if projects:
                     all_projects.extend(projects)
                     break
-            except Exception as e:
-                logger.warning(f"Aviso ao consultar '{url}': {e}")
 
         # Remove duplicatas locais pelo ID
         unique = {}
@@ -77,10 +146,10 @@ class FreelasMonitor:
         if db.is_project_seen(project.id):
             return
 
-        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] 🔎 Novo Projeto: '{project.title}' (ID: {project.id})")
-        print(f"   👥 Concorrência: {project.proposals_count} propostas | 👤 Cliente: {project.client.name} (⭐ {project.client.rating or 'Novo'})")
+        self.log(f"🔎 Novo Projeto Detectado: '{project.title}' (ID: {project.id})")
+        self.log(f"   👥 Concorrência: {project.proposals_count} propostas | 👤 Cliente: {project.client.name} (⭐ {project.client.rating or 'Novo'})")
 
-        # 1. Filtro Cirúrgico
+        # 1. Filtro Sniper
         eval_result: FilterResult = self.project_filter.evaluate(project)
 
         # 2. Persistência do status de triagem
@@ -100,14 +169,16 @@ class FreelasMonitor:
         )
 
         if not eval_result.accepted:
-            print(f"   ❌ Descartado (Score: {eval_result.score:.1f}/100): {reasons_text}")
+            self.log(f"   ❌ Descartado (Score: {eval_result.score:.1f}/100): {reasons_text}")
             return
 
-        print(f"   ✅ APROVADO! Score de Relevância: {eval_result.score:.1f}/100")
+        self.log(f"   ✅ APROVADO! Score Sniper: {eval_result.score:.1f}/100")
+        for r in eval_result.reasons:
+            self.log(f"      • {r}")
 
         # 3. Validação de Conexões Diárias
         if not db.can_send_proposal_today():
-            print("   ⚠️ Limite diário de conexões atingido! Guardado no banco para amanhã.")
+            self.log("   ⚠️ Limite diário de conexões atingido! Guardado no banco para amanhã.")
             return
 
         # 4. Precificação e Geração de Proposta Contextualizada
@@ -122,52 +193,75 @@ class FreelasMonitor:
             status="pending_approval",
         )
 
-        print(f"   💰 Preço Estratégico: R$ {proposal.price:.2f} (Prazo: {proposal.delivery_days} dias)")
-        print(f"   📝 Proposta Gerada:\n   " + proposal.text.replace("\n", "\n   "))
+        self.log(f"   💰 Preço Estratégico: R$ {proposal.price:.2f} (Prazo: {proposal.delivery_days} dias)")
 
         # 5. Despacho 100% Autônomo se o Score for alto
         if settings.AUTO_SUBMIT_ENABLED and eval_result.score >= settings.AUTO_SUBMIT_MIN_SCORE:
-            print(f"\n   ⚡ [MODO AUTÔNOMO] Enviando proposta diretamente no 99Freelas...")
+            self.log("   ⚡ [MODO AUTÔNOMO] Enviando proposta diretamente no 99Freelas...")
             sub_res = proposal_submitter.submit(project, proposal)
             if sub_res.success:
-                print(f"   🚀 SUCESSO! Proposta despachada com sucesso no 99Freelas!")
+                self.log(f"   🚀 SUCESSO! Proposta despachada com sucesso no 99Freelas! ({project.title})")
             else:
-                print(f"   ⚠️ Aviso no envio: {sub_res.message}")
+                self.log(f"   ⚠️ Aviso no envio: {sub_res.message}", level="warning")
 
         # 6. Notificação via Telegram (se habilitado)
-        await telegram_notifier.send_proposal_alert(project, proposal)
+        try:
+            await telegram_notifier.send_proposal_alert(project, proposal)
+        except Exception as e:
+            self.log(f"   ⚠️ Aviso Telegram: {e}", level="warning")
 
     async def run_loop(self, single_run: bool = False) -> None:
-        """Inicia o ciclo contínuo de monitoramento."""
-        print("\n" + "=" * 65)
-        print(" 🤖 MONITOR DO 99FREELAS EM EXECUÇÃO (FEED AO VIVO)")
-        print(f" ⏱️ Intervalo de Varredura: a cada {self.check_interval_seconds} segundos")
-        print(f" 🔌 Conexões Usadas Hoje: {db.get_today_connections_used()} / {settings.MAX_CONNECTIONS_PER_DAY}")
-        print("=" * 65 + "\n")
+        """Inicia o ciclo contínuo de monitoramento resiliente 24h."""
+        self.log("=" * 65)
+        self.log(" 🤖 MONITOR 24H RESILIENTE DO 99FREELAS EM EXECUÇÃO")
+        self.log(f" ⏱️ Intervalo de Varredura: a cada {self.check_interval_seconds} segundos")
+        self.log(f" 🔌 Conexões Usadas Hoje: {db.get_today_connections_used()} / {settings.MAX_CONNECTIONS_PER_DAY}")
+        self.log("=" * 65)
 
         cycle = 1
-        while True:
+        while not self.stop_requested:
             try:
-                now_str = datetime.now().strftime("%H:%M:%S")
-                print(f"[{now_str}] 📡 [Ciclo #{cycle}] Varrendo feed de novos projetos do 99Freelas...")
+                # Validação periódica de saúde da sessão (Card 5.3)
+                if cycle % 5 == 1:
+                    health = session_manager.verify_session_health()
+                    if not health["valid"]:
+                        self.log(f"⚠️ Alerta de Sessão: {health['message']}", level="warning")
+
+                self.log(f"📡 [Ciclo #{cycle}] Varrendo feed de novos projetos do 99Freelas...")
                 projects = await self.fetch_latest_projects()
-                print(f"[{now_str}] 📋 {len(projects)} projetos encontrados na listagem atual.")
+                self.log(f"📋 {len(projects)} projetos encontrados na listagem atual.")
 
                 new_count = 0
                 for project in projects:
+                    if self.stop_requested:
+                        break
                     if not db.is_project_seen(project.id):
                         new_count += 1
                         await self.process_project(project)
 
                 if new_count == 0:
-                    print(f"[{now_str}] 😴 Nenhum projeto novo desde a última checagem.")
+                    self.log("😴 Nenhum projeto novo desde a última checagem.")
+
+                # Atualiza evento de scan no controller se importável
+                try:
+                    from bot_99freelas.crawler.controller import monitor_controller
+                    monitor_controller.record_scan_event()
+                except Exception:
+                    pass
 
             except Exception as e:
-                logger.error(f"Erro durante ciclo de varredura: {e}", exc_info=True)
+                self.log(f"❌ Erro recuperável durante ciclo de varredura: {e}", level="error")
 
-            if single_run:
+            if single_run or self.stop_requested:
                 break
 
             cycle += 1
-            print(f"\n⏳ Aguardando {self.check_interval_seconds}s para a próxima varredura... (Ctrl+C para parar)\n")
-            await asyncio.sleep(self.check_interval_seconds)
+            self.log(f"⏳ Aguardando {self.check_interval_seconds}s para a próxima varredura...")
+
+            # Sono fracionado para responder instantaneamente ao pedido de parada
+            for _ in range(self.check_interval_seconds):
+                if self.stop_requested:
+                    break
+                await asyncio.sleep(1)
+
+        self.log("🛑 Ciclo de monitoramento finalizado.")

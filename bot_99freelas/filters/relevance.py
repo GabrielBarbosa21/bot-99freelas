@@ -1,4 +1,4 @@
-"""Filtro de relevância semântica e descarte cirúrgico para preservação de conexões."""
+"""Filtro de relevância semântica e descarte cirúrgico para preservação de conexões (Filtro Sniper)."""
 
 import re
 from typing import List, Optional
@@ -17,7 +17,7 @@ class FilterResult(BaseModel):
 
 
 class ProjectFilter:
-    """Motor de filtragem e ranqueamento de projetos."""
+    """Motor de filtragem, calibração Sniper e ranqueamento de projetos."""
 
     # Palavras-chave indicativas de spam, golpes ou demandas inviáveis
     SPAM_PATTERNS = [
@@ -38,6 +38,33 @@ class ProjectFilter:
         "aplicativo estilo", "sistema erp", "saas completo"
     ]
 
+    # Descarte automático e silencioso de categorias fora de escopo (design puro, redação, vídeo, etc.)
+    OUT_OF_SCOPE_PATTERNS = [
+        r"\b(?:design de logo|logotipo|identidade visual|flyer|banner para redes sociais|cartão de visita)\b",
+        r"\b(?:edição de vídeo|edicao de video|editor de vídeo|editor de reels|after effects|premiere)\b",
+        r"\b(?:locução|locucao|locutor|gravação de voz|narração)\b",
+        r"\b(?:traduzir texto|tradução de inglês|redação de artigos|redator de artigos|artigos para blog|redação seo)\b",
+        r"\b(?:maquiagem|fotografia de produto|manicure)\b",
+    ]
+
+    # Stacks-alvo de altíssima afinidade (Python, Automação, APIs, Web Scraping, IA, Bots)
+    TARGET_STACK_PATTERNS = [
+        (r"\b(?:python|py)\b", "Python"),
+        (r"\b(?:automação|automacao|automatizar|automation)\b", "Automação"),
+        (r"\b(?:bot|bots|chatbot|telegram bot|whatsapp bot)\b", "Bots"),
+        (r"\b(?:scraping|scraper|crawler|raspar|extrair dados|selenium|playwright)\b", "Web Scraping"),
+        (r"\b(?:api|apis|rest|fastapi|flask|django|webhook|endpoint)\b", "APIs & Backend"),
+        (r"\b(?:ia|inteligência artificial|inteligencia artificial|llm|chatgpt|openai|gemini)\b", "Inteligência Artificial"),
+        (r"\b(?:script|scripts|planilha|excel|pandas|csv)\b", "Scripts & Dados"),
+        (r"\b(?:javascript|typescript|node|react|fullstack)\b", "Desenvolvimento Web"),
+    ]
+
+    # Termos indicativos de entrega ágil (1 a 3 dias) para conquista rápida de avaliações 5 estrelas
+    FAST_DELIVERY_PATTERNS = [
+        r"\b(?:urgente|rápido|rapido|pequeno ajuste|ajuste simples|correção rápida|correcao rapida)\b",
+        r"\b(?:script simples|1 dia|2 dias|3 dias|poucas horas|hoje mesmo|pequena alteração)\b",
+    ]
+
     def __init__(
         self,
         min_budget: Optional[float] = None,
@@ -51,10 +78,9 @@ class ProjectFilter:
     def evaluate(self, project: Project) -> FilterResult:
         reasons: List[str] = []
         warnings: List[str] = []
-        score = 70.0  # Base score inicial
+        text_to_check = f"{project.title} {project.description}".lower()
 
         # 1. Checagem de Spam / Golpes
-        text_to_check = f"{project.title} {project.description}".lower()
         for pattern in self.SPAM_PATTERNS:
             if re.search(pattern, text_to_check):
                 return FilterResult(
@@ -63,7 +89,21 @@ class ProjectFilter:
                     reasons=[f"Descartado por suspeita de spam/golpe: padrão '{pattern}' detectado."]
                 )
 
-        # 2. Concorrência Excessiva (Preservação de Conexões)
+        # 2. Descarte Automático de Categorias Fora de Escopo (Design puro, tradução, vídeo, redação)
+        # Só descarta se não contiver menção explícita a código/automação
+        has_dev_indication = any(re.search(pat, text_to_check) for pat, _ in self.TARGET_STACK_PATTERNS[:6])
+        if not has_dev_indication:
+            for pat in self.OUT_OF_SCOPE_PATTERNS:
+                if re.search(pat, text_to_check):
+                    return FilterResult(
+                        accepted=False,
+                        score=0.0,
+                        reasons=["Descartado: Demanda fora do escopo de desenvolvimento de software/automação."]
+                    )
+
+        score = 65.0  # Base inicial equilibrada
+
+        # 3. Concorrência Excessiva (Preservação de Conexões)
         if project.proposals_count > self.max_proposals:
             return FilterResult(
                 accepted=False,
@@ -74,7 +114,7 @@ class ProjectFilter:
             score += 15.0
             reasons.append("Poucas propostas concorrentes (vantagem de primeiro contato).")
 
-        # 3. Análise de Orçamento
+        # 4. Análise de Orçamento
         budget = project.budget_average
         if budget is not None:
             if budget < self.min_budget:
@@ -98,7 +138,7 @@ class ProjectFilter:
         else:
             warnings.append("Orçamento não especificado ou a combinar.")
 
-        # 4. Histórico e Reputação do Cliente
+        # 5. Histórico e Reputação do Cliente
         client = project.client
         if client.projects_published >= 3:
             if client.hiring_rate < self.min_client_hiring_rate:
@@ -117,16 +157,37 @@ class ProjectFilter:
             warnings.append(f"Avaliação média do cliente baixa ({client.rating:.1f}/5.0).")
             score -= 15.0
 
-        # 5. Clareza da Descrição
+        # 6. Clareza da Descrição
         if len(project.description.strip()) < 40:
             warnings.append("Descrição muito vaga ou incompleta.")
             score -= 10.0
+
+        # 🎯 7. Bônus Sniper para Stacks-Alvo de Desenvolvimento e Automação
+        matched_stacks = []
+        for pat, stack_name in self.TARGET_STACK_PATTERNS:
+            if re.search(pat, text_to_check):
+                matched_stacks.append(stack_name)
+
+        if matched_stacks:
+            # Bônus calibrado: 1 stack = +15, 2+ stacks = +25 pts
+            affinity_bonus = 25.0 if len(matched_stacks) >= 2 else 15.0
+            score += affinity_bonus
+            reasons.append(f"🎯 Stack Sniper ({', '.join(matched_stacks)}): bônus de +{affinity_bonus:.0f} pts.")
+
+        # ⚡ 8. Ponderação de Viabilidade de Entrega Ágil (Quick Win para 5 estrelas)
+        for fast_pat in self.FAST_DELIVERY_PATTERNS:
+            if re.search(fast_pat, text_to_check):
+                score += 10.0
+                reasons.append("⚡ Oportunidade de entrega ágil / Quick Win (+10 pts).")
+                break
 
         # Normalização do Score (0 - 100)
         final_score = max(0.0, min(100.0, score))
         accepted = final_score >= 50.0
 
-        if accepted and not reasons:
+        if accepted and final_score >= 90.0:
+            reasons.append("🔥 Prioridade Máxima Sniper: Score 90+!")
+        elif accepted and not reasons:
             reasons.append("Projeto alinhado com critérios de viabilidade e escopo.")
 
         return FilterResult(
@@ -135,3 +196,4 @@ class ProjectFilter:
             reasons=reasons,
             warnings=warnings
         )
+
