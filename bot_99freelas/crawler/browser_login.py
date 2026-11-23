@@ -1,78 +1,130 @@
-"""Assistente de Login Automático via Navegador Real (Google Auth & Captura de Cookies)."""
+"""Assistente de Login Automático via Navegador Real (Google Auth & Captura de Cookies).
+Compatível com execução direta no terminal e disparo remoto via Painel Web.
+"""
 
 import sys
 import json
 import time
+import subprocess
 import threading
 import logging
 from datetime import datetime
 from pathlib import Path
+from typing import Optional, Callable, Dict, Any
+
 from bot_99freelas.config import BASE_DIR
 from bot_99freelas.crawler.session import COOKIES_FILE, session_manager
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("BrowserLogin")
 
+# Caminho preferencial do Python 3.13 com Playwright instalado
+PYTHON313_EXE = Path(r"C:\Users\Gabriel\AppData\Local\Programs\Python\Python313\python.exe")
 
-def run_browser_login() -> bool:
-    """Abre o Google Chrome real sem flags de automação para permitir login via Google."""
+
+def run_browser_login(
+    status_callback: Optional[Callable[[str], None]] = None,
+    enter_event: Optional[threading.Event] = None,
+    cancel_event: Optional[threading.Event] = None,
+) -> bool:
+    """Abre o Google Chrome real sem flags de automação para login manual ou via Google."""
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
-        logger.error(
-            "Playwright não encontrado no interpretador atual. "
-            "Certifique-se de executar com o Python onde o Playwright está instalado."
-        )
+        # Se o Playwright não estiver no interpretador corrente mas estiver no Python 3.13, executa subprocess
+        if PYTHON313_EXE.exists() and sys.executable != str(PYTHON313_EXE):
+            msg = "Redirecionando execução do login para o Python 3.13 com Playwright..."
+            logger.info(msg)
+            if status_callback:
+                status_callback(msg)
+            try:
+                proc = subprocess.Popen(
+                    [str(PYTHON313_EXE), "-m", "bot_99freelas", "login"],
+                    cwd=str(BASE_DIR),
+                )
+                # Aguarda processo ou cancelamento
+                while proc.poll() is None:
+                    if cancel_event and cancel_event.is_set():
+                        proc.terminate()
+                        return False
+                    time.sleep(1.0)
+                return proc.returncode == 0
+            except Exception as e:
+                logger.error(f"Erro ao executar subprocesso Python 3.13: {e}")
+                return False
+
+        msg = "Playwright não encontrado no interpretador atual."
+        logger.error(msg)
+        if status_callback:
+            status_callback(msg)
         return False
 
-    print("\n" + "=" * 65)
-    print(" 🌐 ABRINDO O GOOGLE CHROME PARA LOGIN NO 99FREELAS")
-    print("=" * 65)
-    print("👉 1. O navegador Google Chrome vai abrir na tela de login.")
-    print("👉 2. Faça login com o Google normalmente na janela aberta.")
-    print("👉 3. O bot detectará automaticamente OU você pode apertar [ENTER]")
-    print("      neste terminal assim que você estiver logado!")
-    print("=" * 65 + "\n")
+    def emit(text: str) -> None:
+        print(text)
+        if status_callback:
+            try:
+                status_callback(text)
+            except Exception:
+                pass
+
+    emit("\n" + "=" * 65)
+    emit(" 🌐 ABRINDO O GOOGLE CHROME PARA LOGIN NO 99FREELAS")
+    emit("=" * 65)
+    emit("👉 1. O navegador Google Chrome vai abrir na tela de login.")
+    emit("👉 2. Faça login com o Google normalmente na janela aberta.")
+    emit("👉 3. O painel detectará automaticamente OU você pode confirmar no botão!")
+    emit("=" * 65 + "\n")
 
     user_data_dir = BASE_DIR / "browser_profile"
     user_data_dir.mkdir(parents=True, exist_ok=True)
 
-    # Thread para captura de ENTER do usuário
-    enter_pressed = threading.Event()
+    # Thread para captura de ENTER no terminal caso executado via CLI
+    enter_pressed = enter_event or threading.Event()
+    if not enter_event:
+        def listen_for_enter():
+            try:
+                input()
+                enter_pressed.set()
+            except Exception:
+                pass
 
-    def listen_for_enter():
-        try:
-            input()
-            enter_pressed.set()
-        except Exception:
-            pass
-
-    input_thread = threading.Thread(target=listen_for_enter, daemon=True)
-    input_thread.start()
+        threading.Thread(target=listen_for_enter, daemon=True).start()
 
     with sync_playwright() as p:
-        context = p.chromium.launch_persistent_context(
-            user_data_dir=str(user_data_dir),
-            channel="chrome",
-            headless=False,
-            viewport={"width": 1280, "height": 800},
-            ignore_default_args=["--enable-automation"],
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--start-maximized",
-            ],
-        )
+        try:
+            context = p.chromium.launch_persistent_context(
+                user_data_dir=str(user_data_dir),
+                channel="chrome",
+                headless=False,
+                viewport={"width": 1280, "height": 800},
+                ignore_default_args=["--enable-automation"],
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--start-maximized",
+                ],
+            )
+        except Exception as e:
+            emit(f"⚠️ Erro ao abrir Chrome com perfil: {e}. Tentando sem perfil persistente...")
+            try:
+                browser = p.chromium.launch(
+                    channel="chrome",
+                    headless=False,
+                    args=["--disable-blink-features=AutomationControlled", "--start-maximized"],
+                )
+                context = browser.new_context()
+            except Exception as e2:
+                emit(f"❌ Não foi possível abrir o navegador Chrome: {e2}")
+                return False
 
         page = context.pages[0] if context.pages else context.new_page()
 
-        logger.info("Navegando para a página de login do 99Freelas...")
+        emit("Navegando para a página de login do 99Freelas...")
         try:
             page.goto("https://www.99freelas.com.br/login", wait_until="domcontentloaded")
         except Exception as e:
             logger.warning(f"Aviso na navegação: {e}")
 
-        logger.info("Aguardando você concluir o login pelo Google...")
-        print("\n👉 [DICA]: Assim que você ver seu painel/perfil no 99Freelas, aperte ENTER aqui no terminal se não fechar sozinho!\n")
+        emit("Aguardando você concluir o login pelo Google na janela do Chrome...")
 
         max_wait_seconds = 360  # 6 minutos
         start_time = time.time()
@@ -80,8 +132,11 @@ def run_browser_login() -> bool:
         last_log_time = 0
 
         while time.time() - start_time < max_wait_seconds:
+            if cancel_event and cancel_event.is_set():
+                emit("🛑 Operação de login cancelada pelo usuário.")
+                break
+
             try:
-                # Coleta todos os cookies de todos os domínios
                 all_cookies = context.cookies()
                 freelas_cookies = {
                     c["name"]: c["value"]
@@ -89,7 +144,6 @@ def run_browser_login() -> bool:
                     if "99freelas" in c.get("domain", "").lower()
                 }
 
-                # Checa URLs de todas as abas abertas
                 current_urls = [p.url for p in context.pages if not p.is_closed()]
                 is_back_on_freelas = any(
                     "99freelas.com.br" in u and "login" not in u for u in current_urls
@@ -97,43 +151,123 @@ def run_browser_login() -> bool:
 
                 has_auth_cookie = any(
                     k in freelas_cookies
-                    for k in ["PHPSESSID", "remember_me", "user_session", "session", "user_id"]
+                    for k in ["PHPSESSID", "remember_me", "user_session", "session", "user_id", "kmlicn", "kmlicin"]
                 ) or len(freelas_cookies) >= 3
 
-                # Gatilho de sucesso: automático OU tecla ENTER pressionada
+                # Gatilho de sucesso: automático OU confirmação solicitada
                 if (is_back_on_freelas and has_auth_cookie) or (enter_pressed.is_set() and len(freelas_cookies) > 0):
                     logged_in = True
-                    logger.info("🎉 Login detectado com sucesso!")
+                    emit("🎉 Login detectado com sucesso!")
 
                     # Salva os cookies capturados
                     session_manager.save_cookies(freelas_cookies)
-                    print("\n" + "=" * 65)
-                    print(" ✅ AUTENTICAÇÃO CONCLUÍDA COM SUCESSO!")
-                    print(f" 💾 {len(freelas_cookies)} cookies e tokens salvos em: session_cookies.json")
-                    print(" 🚀 O bot agora está 100% autorizado a operar em sua conta!")
-                    print("=" * 65 + "\n")
+                    emit("\n" + "=" * 65)
+                    emit(" ✅ AUTENTICAÇÃO CONCLUÍDA COM SUCESSO!")
+                    emit(f" 💾 {len(freelas_cookies)} cookies e tokens salvos em: session_cookies.json")
+                    emit(" 🚀 O bot agora está 100% autorizado a operar em sua conta!")
+                    emit("=" * 65 + "\n")
                     time.sleep(2)
                     break
 
-                # Feedback periódico
                 now = time.time()
                 if now - last_log_time >= 5:
                     last_log_time = now
-                    urls_str = ", ".join([u.split("?")[0] for u in current_urls[:2]])
-                    print(f"⏳ [{datetime.now().strftime('%H:%M:%S')}] Aguardando login... (URL: {urls_str} | Cookies 99Freelas: {len(freelas_cookies)})")
+                    emit(f"⏳ [{datetime.now().strftime('%H:%M:%S')}] Aguardando login... ({len(freelas_cookies)} cookies detectados)")
 
-            except Exception as e:
+            except Exception:
                 pass
 
             time.sleep(1.0)
 
-        context.close()
+        try:
+            context.close()
+        except Exception:
+            pass
 
-        if not logged_in:
-            logger.warning("Tempo limite esgotado sem confirmação de login.")
-            return False
+        return logged_in
 
-        return True
+
+class LoginManager:
+    """Gerenciador central de login assíncrono para o Painel Web."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._thread: Optional[threading.Thread] = None
+        self._is_logging_in = False
+        self._enter_event = threading.Event()
+        self._cancel_event = threading.Event()
+        self._status_message = "Pronto"
+        self._last_success = False
+
+    @property
+    def is_logging_in(self) -> bool:
+        return self._is_logging_in and self._thread is not None and self._thread.is_alive()
+
+    def start_login(self, callback: Optional[Callable[[str], None]] = None) -> Dict[str, Any]:
+        """Dispara a abertura do Chrome em segundo plano para autenticação do usuário."""
+        with self._lock:
+            if self.is_logging_in:
+                return {"success": False, "message": "O processo de login já está em andamento no Chrome."}
+
+            self._is_logging_in = True
+            self._enter_event.clear()
+            self._cancel_event.clear()
+            self._status_message = "Iniciando Google Chrome para login..."
+
+            def _worker():
+                try:
+                    success = run_browser_login(
+                        status_callback=self._update_status,
+                        enter_event=self._enter_event,
+                        cancel_event=self._cancel_event,
+                    )
+                    self._last_success = success
+                    if success:
+                        self._status_message = "Login concluído com sucesso!"
+                    else:
+                        self._status_message = "Login cancelado ou não concluído."
+                except Exception as e:
+                    self._last_success = False
+                    self._status_message = f"Erro no login: {e}"
+                finally:
+                    self._is_logging_in = False
+
+            self._thread = threading.Thread(target=_worker, daemon=True, name="BrowserLoginWorker")
+            self._thread.start()
+            return {"success": True, "message": "Navegador Chrome iniciado para login."}
+
+    def confirm_login(self) -> Dict[str, Any]:
+        """Sinaliza manualmente que o usuário terminou o login na janela aberta."""
+        if not self.is_logging_in:
+            return {"success": False, "message": "Nenhum login em andamento."}
+        self._enter_event.set()
+        self._status_message = "Capturando cookies da janela do Chrome..."
+        return {"success": True, "message": "Confirmação enviada. Coletando cookies..."}
+
+    def cancel_login(self) -> Dict[str, Any]:
+        """Cancela o processo de login."""
+        if not self.is_logging_in:
+            return {"success": False, "message": "Nenhum login em andamento."}
+        self._cancel_event.set()
+        self._status_message = "Login cancelado."
+        return {"success": True, "message": "Cancelando navegador..."}
+
+    def _update_status(self, msg: str) -> None:
+        self._status_message = msg
+
+    def get_status(self) -> Dict[str, Any]:
+        session_health = session_manager.verify_session_health()
+        return {
+            "logging_in": self.is_logging_in,
+            "status_message": self._status_message,
+            "session_valid": session_health["valid"],
+            "cookie_count": session_health["cookie_count"],
+            "session_message": session_health["message"],
+        }
+
+
+# Instância global
+login_manager = LoginManager()
 
 
 if __name__ == "__main__":

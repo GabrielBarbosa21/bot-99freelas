@@ -1,10 +1,11 @@
-"""Testes das funcionalidades da Fase 5 (Cards 5.1, 5.2, 5.3)."""
+"""Testes das funcionalidades da Fase 5 (Cards 5.1, 5.2, 5.3 e Login Web)."""
 
 import unittest
 from unittest.mock import patch
 from bot_99freelas.crawler.controller import MonitorController
 from bot_99freelas.crawler.session import FreelasSession
 from bot_99freelas.crawler.monitor import LOGS_DIR, LOG_FILE
+from bot_99freelas.crawler.browser_login import LoginManager
 
 
 class TestPhase5(unittest.TestCase):
@@ -43,6 +44,29 @@ class TestPhase5(unittest.TestCase):
 
         controller.clear_logs()
         self.assertEqual(len(controller.get_logs()), 0)
+
+    def test_login_manager_lifecycle(self):
+        manager = LoginManager()
+        self.assertFalse(manager.is_logging_in)
+
+        status = manager.get_status()
+        self.assertIn("logging_in", status)
+        self.assertIn("status_message", status)
+        self.assertIn("session_valid", status)
+
+        # Confirm and cancel when not logging in
+        res_conf = manager.confirm_login()
+        self.assertFalse(res_conf["success"])
+
+        res_canc = manager.cancel_login()
+        self.assertFalse(res_canc["success"])
+
+    def test_web_dashboard_auth_integration(self):
+        from bot_99freelas.dashboard.web import HTML_TEMPLATE
+        self.assertIn("modal-login", HTML_TEMPLATE)
+        self.assertIn("session-alert-banner", HTML_TEMPLATE)
+        self.assertIn("/api/auth/login", HTML_TEMPLATE)
+        self.assertIn("/api/auth/status", HTML_TEMPLATE)
 
     def test_logs_directory_and_file_setup(self):
         self.assertTrue(str(LOG_FILE).endswith("bot_99freelas.log"))

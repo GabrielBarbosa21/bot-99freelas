@@ -1,4 +1,4 @@
-"""Servidor Web do Painel de Controle Unificado com Monitor 24h e Terminal ao Vivo (Cards 5.1 & 5.3)."""
+"""Servidor Web do Painel de Controle Unificado com Monitor 24h, Terminal ao Vivo e Login Integrado (Fase 5+)."""
 
 import json
 import logging
@@ -10,6 +10,7 @@ from bot_99freelas.dashboard.service import dashboard_service
 from bot_99freelas.dashboard.kanban import kanban_manager
 from bot_99freelas.dashboard.models import TaskStatus
 from bot_99freelas.crawler.controller import monitor_controller
+from bot_99freelas.crawler.browser_login import login_manager
 from bot_99freelas.storage.db import db
 
 logger = logging.getLogger("WebDashboard")
@@ -47,16 +48,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     </span>
                 </div>
 
-                <!-- Status da Sessão de Cookies -->
-                <div id="session-badge-container">
-                    <span id="session-badge" class="bg-slate-800 text-slate-400 text-xs px-2.5 py-0.5 rounded-full border border-slate-700 font-medium">
-                        🔑 Sessão
-                    </span>
-                </div>
+                <!-- Status da Sessão de Cookies com gatilho de clique -->
+                <button onclick="openLoginModal()" id="session-badge" class="cursor-pointer bg-slate-800 hover:bg-slate-700 text-slate-400 text-xs px-2.5 py-0.5 rounded-full border border-slate-700 font-medium transition">
+                    🔑 Sessão
+                </button>
             </div>
 
             <!-- Botões de Ação do Header -->
             <div class="flex items-center space-x-3">
+                <button onclick="openLoginModal()" id="btn-auth-header" class="text-xs font-semibold px-3 py-1.5 rounded-lg border transition shadow-sm bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-500/30">
+                    🔑 Conectar Conta
+                </button>
                 <button id="btn-toggle-monitor" onclick="toggleMonitor()" class="text-xs font-semibold px-3.5 py-1.5 rounded-lg border transition shadow-sm bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500/30">
                     ▶ Ligar Monitor
                 </button>
@@ -68,6 +70,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     </header>
 
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        <!-- Banner de Alerta de Sessão (Exibido se sessão expirada ou desconectada) -->
+        <div id="session-alert-banner" class="hidden bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div class="flex items-center space-x-3">
+                <span class="text-2xl">⚠️</span>
+                <div>
+                    <div class="font-bold text-amber-300 text-sm">Conta do 99Freelas Não Conectada ou Token Expirado</div>
+                    <div class="text-xs text-slate-300 mt-0.5">Faça login com 1 clique para autorizar o bot a enviar propostas e monitorar oportunidades 24h sem interrupção.</div>
+                </div>
+            </div>
+            <button onclick="openLoginModal()" class="whitespace-nowrap bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs px-4 py-2 rounded-lg transition shadow flex items-center space-x-1.5">
+                <span>🔑 Conectar Conta Agora</span>
+            </button>
+        </div>
+
         <!-- KPIs / Métricas -->
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl shadow-sm">
@@ -198,9 +214,57 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </section>
     </main>
 
+    <!-- Modal Interativo de Autenticação / Login via Navegador -->
+    <div id="modal-login" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-lg w-full space-y-5 shadow-2xl relative">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div class="flex items-center space-x-2.5">
+                    <span class="text-xl">🌐</span>
+                    <h3 class="font-bold text-white text-base">Conexão da Conta 99Freelas</h3>
+                </div>
+                <button onclick="closeLoginModal()" class="text-slate-400 hover:text-white text-sm transition">✕</button>
+            </div>
+
+            <div class="space-y-3.5 text-xs text-slate-300">
+                <div class="bg-slate-800/60 p-4 rounded-xl border border-slate-700/50 space-y-2.5">
+                    <div class="flex items-start space-x-2.5 text-emerald-400">
+                        <span class="font-bold">1.</span>
+                        <span>O navegador Google Chrome foi iniciado na tela oficial do 99Freelas.</span>
+                    </div>
+                    <div class="flex items-start space-x-2.5 text-sky-400">
+                        <span class="font-bold">2.</span>
+                        <span>Faça seu login com Google ou e-mail na janela aberta do Chrome.</span>
+                    </div>
+                    <div class="flex items-start space-x-2.5 text-violet-400">
+                        <span class="font-bold">3.</span>
+                        <span>Assim que logar, a sessão é capturada automaticamente para o bot!</span>
+                    </div>
+                </div>
+
+                <!-- Live Status do Processo de Login -->
+                <div class="flex items-center space-x-3 p-3.5 bg-black/60 rounded-xl border border-slate-800">
+                    <div id="login-spinner" class="w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin"></div>
+                    <div id="login-status-msg" class="font-mono text-xs text-slate-300">Iniciando navegador Chrome...</div>
+                </div>
+            </div>
+
+            <div class="flex items-center justify-between pt-2 border-t border-slate-800/60">
+                <button onclick="cancelLogin()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs px-3.5 py-2 rounded-lg border border-slate-700 transition">
+                    Cancelar
+                </button>
+                <div class="flex items-center space-x-2">
+                    <button onclick="confirmLogin()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs px-4 py-2 rounded-lg transition shadow flex items-center space-x-1.5">
+                        <span>✅ Já Concluí o Login</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         let isMonitorRunning = false;
         let lastLogCount = 0;
+        let loginPollTimer = null;
 
         async function fetchData() {
             try {
@@ -259,14 +323,23 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     statusText.textContent = "Monitor em pausa";
                 }
 
-                // Sessão
+                // Sessão e Alerta de Login
                 const sessionBadge = document.getElementById('session-badge');
+                const sessionBanner = document.getElementById('session-alert-banner');
+                const btnAuthHeader = document.getElementById('btn-auth-header');
+
                 if (resStatus.session_valid) {
-                    sessionBadge.className = "bg-emerald-500/10 text-emerald-400 text-xs px-2.5 py-0.5 rounded-full border border-emerald-500/20 font-medium";
+                    sessionBadge.className = "cursor-pointer bg-emerald-500/10 text-emerald-400 text-xs px-2.5 py-0.5 rounded-full border border-emerald-500/20 font-medium";
                     sessionBadge.innerHTML = "🔑 Sessão Ativa";
+                    sessionBanner.classList.add('hidden');
+                    btnAuthHeader.className = "text-xs font-semibold px-3 py-1.5 rounded-lg border transition shadow-sm bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700";
+                    btnAuthHeader.textContent = "🔄 Renovar Conta";
                 } else {
-                    sessionBadge.className = "bg-amber-500/10 text-amber-400 text-xs px-2.5 py-0.5 rounded-full border border-amber-500/20 font-medium";
-                    sessionBadge.innerHTML = "⚠️ Sessão Ausente/Expirada";
+                    sessionBadge.className = "cursor-pointer bg-amber-500/10 text-amber-400 text-xs px-2.5 py-0.5 rounded-full border border-amber-500/20 font-medium animate-pulse";
+                    sessionBadge.innerHTML = "⚠️ Sessão Expirada";
+                    sessionBanner.classList.remove('hidden');
+                    btnAuthHeader.className = "text-xs font-semibold px-3 py-1.5 rounded-lg border transition shadow-sm bg-amber-600 hover:bg-amber-500 text-white border-amber-500/30 animate-pulse";
+                    btnAuthHeader.textContent = "🔑 Conectar Conta";
                 }
 
                 // Render logs
@@ -282,6 +355,63 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             fetchMonitorState();
         }
 
+        // --- Gerenciamento do Modal e Fluxo de Login ---
+        async function openLoginModal() {
+            const modal = document.getElementById('modal-login');
+            modal.classList.remove('hidden');
+            document.getElementById('login-status-msg').textContent = "Iniciando Google Chrome...";
+            document.getElementById('login-spinner').className = "w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin";
+
+            // Dispara início do login
+            await fetch('/api/auth/login', { method: 'POST' });
+
+            // Inicia polling de status do login
+            if (loginPollTimer) clearInterval(loginPollTimer);
+            loginPollTimer = setInterval(pollLoginStatus, 1500);
+        }
+
+        async function pollLoginStatus() {
+            try {
+                const res = await fetch('/api/auth/status').then(r => r.json());
+                const msgEl = document.getElementById('login-status-msg');
+                const spinnerEl = document.getElementById('login-spinner');
+
+                if (res.status_message) {
+                    msgEl.textContent = res.status_message;
+                }
+
+                if (res.session_valid) {
+                    spinnerEl.className = "hidden";
+                    msgEl.className = "font-mono text-xs text-emerald-400 font-bold";
+                    msgEl.textContent = "🎉 Sucesso! Conta conectada e cookies salvos!";
+                    clearInterval(loginPollTimer);
+                    setTimeout(() => {
+                        closeLoginModal();
+                        fetchMonitorState();
+                        fetchData();
+                    }, 2000);
+                }
+            } catch (e) {
+                console.error("Erro ao consultar status de login:", e);
+            }
+        }
+
+        async function confirmLogin() {
+            const msgEl = document.getElementById('login-status-msg');
+            msgEl.textContent = "Capturando cookies da janela do Chrome...";
+            await fetch('/api/auth/confirm', { method: 'POST' });
+        }
+
+        async function cancelLogin() {
+            await fetch('/api/auth/cancel', { method: 'POST' });
+            closeLoginModal();
+        }
+
+        function closeLoginModal() {
+            if (loginPollTimer) clearInterval(loginPollTimer);
+            document.getElementById('modal-login').classList.add('hidden');
+        }
+
         function renderTerminalLogs(logs) {
             const consoleEl = document.getElementById('terminal-console');
             if (logs.length === lastLogCount) return;
@@ -294,7 +424,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             consoleEl.innerHTML = logs.map(line => {
                 let colorClass = "text-slate-300";
-                if (line.includes("APROVADO") || line.includes("SUCESSO") || line.includes("Prioridade")) {
+                if (line.includes("APROVADO") || line.includes("SUCESSO") || line.includes("Prioridade") || line.includes("AUTENTICAÇÃO CONCLUÍDA")) {
                     colorClass = "text-emerald-400 font-semibold";
                 } else if (line.includes("Descartado")) {
                     colorClass = "text-slate-500";
@@ -487,6 +617,9 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         elif path == "/api/monitor/logs":
             self._send_json({"logs": monitor_controller.get_logs()})
 
+        elif path == "/api/auth/status":
+            self._send_json(login_manager.get_status())
+
         else:
             self.send_response(404)
             self.end_headers()
@@ -511,6 +644,18 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         elif parsed.path == "/api/monitor/clear-logs":
             monitor_controller.clear_logs()
             self._send_json({"success": True})
+
+        elif parsed.path == "/api/auth/login":
+            res = login_manager.start_login()
+            self._send_json(res)
+
+        elif parsed.path == "/api/auth/confirm":
+            res = login_manager.confirm_login()
+            self._send_json(res)
+
+        elif parsed.path == "/api/auth/cancel":
+            res = login_manager.cancel_login()
+            self._send_json(res)
 
         elif parsed.path == "/api/kanban/move":
             task_id = data.get("task_id")
@@ -546,6 +691,7 @@ def start_web_dashboard(port: int = 5000, open_browser: bool = True, auto_start_
     print(f" 🌐 PAINEL DE CONTROLE WEB UNIFICADO 24H: {url}")
     print("=" * 65)
     print("👉 Acompanhe métricas, quadro Kanban, terminal ao vivo e feed do 99Freelas!")
+    print("👉 Faça login na sua conta do 99Freelas diretamente pelo botão no painel.")
     print("👉 Pressione Ctrl+C para encerrar o painel.\n")
 
     # Inicia automaticamente o monitor em segundo plano (Card 5.1)
