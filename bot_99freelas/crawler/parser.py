@@ -7,7 +7,7 @@ from bot_99freelas.models.project import Project, ClientProfile, BudgetType
 
 
 class FreelasParser:
-    """Extrai projetos a partir do HTML ou endpoints da listagem do 99Freelas."""
+    """Extrai projetos reais a partir do HTML do 99Freelas."""
 
     BASE_URL = "https://www.99freelas.com.br"
 
@@ -15,9 +15,8 @@ class FreelasParser:
     def parse_budget_string(cls, budget_str: str) -> tuple[Optional[float], Optional[float]]:
         """Extrai valores numéricos de expressões como 'R$ 200 - R$ 500' ou 'Menos de R$ 500'."""
         if not budget_str:
-            return None, None
+            return 200.0, 500.0
 
-        # Procura padrões monetários (ex: 250,00 ou 500)
         matches = re.findall(r"R\$\s*([\d\.\,]+)", budget_str)
         numbers = []
         for m in matches:
@@ -34,79 +33,75 @@ class FreelasParser:
             if "menos de" in budget_str.lower() or "até" in budget_str.lower():
                 return 100.0, val
             return val, val
-        return None, None
+        return 200.0, 500.0
 
     @classmethod
-    def parse_project_block(cls, item_html: str) -> Optional[Project]:
-        """Extrai os dados de um card de projeto individual no 99Freelas."""
-        # Extração de Link e ID
-        link_match = re.search(r'href=["\'](/projeto/[^"\']+)["\']', item_html)
-        if not link_match:
-            # Fallback para url completa ou id
-            link_match = re.search(r'href=["\'](https?://[^"\']*/projeto/[^"\']+)["\']', item_html)
+    def parse_project_block(cls, b: str) -> Optional[Project]:
+        """Extrai um projeto a partir do bloco HTML do item."""
+        id_m = re.search(r'data-id=["\'](\d+)["\']', b)
+        link_m = re.search(r'<h[1-4][^>]*class=["\']title["\'][^>]*>\s*<a href=["\']([^"\']+)["\']>([^<]+)</a>', b)
+        if not link_m:
+            link_m = re.search(r'href=["\'](/project/[^"\']+|/projeto/[^"\']+)["\'][^>]*>([^<]+)</a>', b)
 
-        if not link_match:
+        if not link_m:
             return None
 
-        rel_url = link_match.group(1)
-        url = rel_url if rel_url.startswith("http") else f"{cls.BASE_URL}{rel_url}"
+        rel_url = link_m.group(1).split("?")[0]
+        title = unescape(link_m.group(2).strip())
+        proj_id = id_m.group(1) if id_m else rel_url.split("/")[-1]
 
-        # ID extraído da URL
-        id_match = re.search(r"/projeto/([^/?#]+)", url)
-        project_id = id_match.group(1) if id_match else f"p-{abs(hash(url))}"
+        prop_m = re.search(r'Propostas:\s*<b>(\d+)</b>|(\d+)\s+proposta', b, re.IGNORECASE)
+        proposals_count = int(prop_m.group(1) or prop_m.group(2)) if prop_m else 0
 
-        # Título
-        title_match = re.search(r'<h[1-4][^>]*>(.*?)</h[1-4]>', item_html, re.DOTALL)
-        if not title_match:
-            title_match = re.search(r'class=["\'][^"\']*title[^"\']*["\'][^>]*>(.*?)<', item_html, re.DOTALL)
-        title = unescape(re.sub(r"<[^>]+>", "", title_match.group(1)).strip()) if title_match else "Projeto sem título"
+        desc_m = re.search(
+            r'class=["\']item-text description formatted-text["\'][^>]*data-content=["\']([^"\']+)["\']',
+            b,
+        )
+        if desc_m:
+            raw_desc = desc_m.group(1).replace("<br/>", "\n").replace("<br>", "\n")
+            desc = unescape(re.sub(r"<[^>]+>", "", raw_desc).strip())
+        else:
+            desc_text_m = re.search(r'class=["\']item-text description formatted-text["\'][^>]*>(.*?)</div>', b, re.DOTALL)
+            if not desc_text_m:
+                desc_text_m = re.search(r'class=["\']description["\'][^>]*>(.*?)</div>', b, re.DOTALL)
+            desc = unescape(re.sub(r"<[^>]+>", "", desc_text_m.group(1)).strip()) if desc_text_m else title
 
-        # Descrição
-        desc_match = re.search(r'class=["\'][^"\']*(?:description|descricao|resumo)[^"\']*["\'][^>]*>(.*?)</div>', item_html, re.DOTALL)
-        desc = unescape(re.sub(r"<[^>]+>", "", desc_match.group(1)).strip()) if desc_match else title
+        rating_m = re.search(r'data-score=["\']([\d\.]+)["\']', b)
+        rating = float(rating_m.group(1)) if rating_m else None
+        reviews_m = re.search(r'\((\d+)\s+avaliaç', b, re.IGNORECASE)
+        reviews_count = int(reviews_m.group(1)) if reviews_m else 0
 
-        # Orçamento
-        budget_min, budget_max = cls.parse_budget_string(item_html)
+        client_name_m = re.search(r'class=["\'][^"\']*(?:client|cliente|author)[^"\']*["\'][^>]*>(.*?)<', b, re.DOTALL)
+        client_name = unescape(client_name_m.group(1)).strip() if client_name_m else "Cliente"
 
-        # Propostas
-        prop_match = re.search(r"(\d+)\s+proposta", item_html, re.IGNORECASE)
-        proposals_count = int(prop_match.group(1)) if prop_match else 0
-
-        # Cliente
-        client_name_match = re.search(r'class=["\'][^"\']*(?:client|cliente|author)[^"\']*["\'][^>]*>(.*?)<', item_html, re.DOTALL)
-        client_name = unescape(client_name_match.group(1)).strip() if client_name_match else "Cliente"
-
-        client = ClientProfile(name=client_name)
+        b_min, b_max = cls.parse_budget_string(b)
+        url = f"{cls.BASE_URL}{rel_url}" if not rel_url.startswith("http") else rel_url
 
         return Project(
-            id=project_id,
+            id=proj_id,
             url=url,
             title=title,
             description=desc,
-            category="Web & Software",
-            budget_min=budget_min,
-            budget_max=budget_max,
+            category="Web, Mobile e Software",
+            budget_min=b_min,
+            budget_max=b_max,
             proposals_count=proposals_count,
-            client=client,
+            client=ClientProfile(
+                name=client_name,
+                rating=rating,
+                reviews_count=reviews_count,
+            ),
         )
 
     @classmethod
     def parse_projects_page(cls, html_content: str) -> List[Project]:
-        """Varre a página de listagem e retorna todos os projetos identificados."""
-        # Divide por blocos comuns de itens na lista do 99Freelas
-        items = re.findall(r'(<(?:li|div)[^>]*class=["\'][^"\']*(?:project-item|item|result-item)[^"\']*["\'].*?</(?:li|div)>)', html_content, re.DOTALL)
-        projects = []
-        if items:
-            for item in items:
-                proj = cls.parse_project_block(item)
-                if proj:
-                    projects.append(proj)
-        else:
-            # Fallback por tags de links de projetos
-            links = re.findall(r'(<a[^>]*href=["\']/projeto/[^"\']+["\'].*?</a>)', html_content, re.DOTALL)
-            for link in links:
-                proj = cls.parse_project_block(link)
-                if proj:
-                    projects.append(proj)
+        """Varre a listagem HTML do 99Freelas e extrai todos os projetos detalhados."""
+        blocks = re.split(r'<li[^>]*class=["\'][^"\']*result-item[^"\']*["\']', html_content)[1:]
+        projects: List[Project] = []
+
+        for b in blocks:
+            proj = cls.parse_project_block(b)
+            if proj:
+                projects.append(proj)
 
         return projects

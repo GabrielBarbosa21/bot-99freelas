@@ -26,7 +26,7 @@ class TestParser(unittest.TestCase):
     def test_parse_project_block(self):
         project = FreelasParser.parse_project_block(SAMPLE_HTML)
         self.assertIsNotNone(project)
-        self.assertEqual(project.id, "12345-criar-script-python-de-automacao")
+        self.assertEqual(project.id, "12345")
         self.assertIn("Criar Script Python", project.title)
         self.assertEqual(project.budget_min, 300.0)
         self.assertEqual(project.budget_max, 600.0)
