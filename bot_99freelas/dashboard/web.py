@@ -216,7 +216,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </section>
     </main>
 
-    <!-- Modal Interativo de Autenticação / Login via Navegador -->
+    <!-- Modal Interativo de Autenticação / Login -->
     <div id="modal-login" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
         <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-lg w-full space-y-5 shadow-2xl relative">
             <div class="flex items-center justify-between pb-3 border-b border-slate-800">
@@ -227,38 +227,81 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <button onclick="closeLoginModal()" class="text-slate-400 hover:text-white text-sm transition">✕</button>
             </div>
 
-            <div class="space-y-3.5 text-xs text-slate-300">
-                <div class="bg-slate-800/60 p-4 rounded-xl border border-slate-700/50 space-y-2.5">
-                    <div class="flex items-start space-x-2.5 text-emerald-400">
-                        <span class="font-bold">1.</span>
-                        <span>O navegador Google Chrome foi iniciado na tela oficial do 99Freelas.</span>
-                    </div>
-                    <div class="flex items-start space-x-2.5 text-sky-400">
-                        <span class="font-bold">2.</span>
-                        <span>Faça seu login com Google ou e-mail na janela aberta do Chrome.</span>
-                    </div>
-                    <div class="flex items-start space-x-2.5 text-violet-400">
-                        <span class="font-bold">3.</span>
-                        <span>Assim que logar, a sessão é capturada automaticamente para o bot!</span>
-                    </div>
-                </div>
+            <!-- Seletor de Modo de Conexão -->
+            <div class="flex space-x-2 border-b border-slate-800 pb-2 text-xs">
+                <button id="tab-btn-redirect" onclick="switchLoginTab('redirect')" class="px-3 py-1.5 font-semibold text-emerald-400 border-b-2 border-emerald-400 transition">
+                    🚀 Conectar via 99Freelas
+                </button>
+                <button id="tab-btn-paste" onclick="switchLoginTab('paste')" class="px-3 py-1.5 font-semibold text-slate-400 hover:text-slate-200 transition">
+                    📋 Colar Cookies
+                </button>
+                <button id="tab-btn-local" onclick="switchLoginTab('local')" class="px-3 py-1.5 font-semibold text-slate-400 hover:text-slate-200 transition">
+                    💻 Chrome Local
+                </button>
+            </div>
 
-                <!-- Live Status do Processo de Login -->
-                <div class="flex items-center space-x-3 p-3.5 bg-black/60 rounded-xl border border-slate-800">
-                    <div id="login-spinner" class="w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin"></div>
-                    <div id="login-status-msg" class="font-mono text-xs text-slate-300">Iniciando navegador Chrome...</div>
+            <!-- Aba 1: Redirecionamento e Bookmarklet -->
+            <div id="login-tab-redirect" class="space-y-4 text-xs text-slate-300">
+                <div class="bg-slate-800/60 p-4 rounded-xl border border-slate-700/50 space-y-3">
+                    <div class="flex items-start space-x-2.5 text-sky-400">
+                        <span class="font-bold text-sm">1.</span>
+                        <div>
+                            <span class="font-semibold block mb-1">Abra o 99Freelas no seu navegador:</span>
+                            <a href="https://www.99freelas.com.br/login" target="_blank" class="inline-flex items-center space-x-1.5 bg-sky-600 hover:bg-sky-500 text-white font-semibold px-3 py-1.5 rounded-lg transition">
+                                <span>🌐 Ir para Login no 99Freelas</span>
+                                <span class="text-xs">↗</span>
+                            </a>
+                            <span class="text-slate-400 block mt-1">Faça login com seu Google normalmente lá.</span>
+                        </div>
+                    </div>
+
+                    <div class="flex items-start space-x-2.5 text-emerald-400 pt-2 border-t border-slate-700/40">
+                        <span class="font-bold text-sm">2.</span>
+                        <div>
+                            <span class="font-semibold block mb-1">Depois de logar no 99Freelas, conecte com 1 clique:</span>
+                            <span class="text-slate-400 block mb-2">Arraste o botão abaixo para a barra de favoritos do seu navegador. Na aba do 99Freelas, basta clicar nele!</span>
+                            <a id="bookmarklet-link" href="#" class="inline-flex items-center space-x-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 py-1.5 rounded-lg border border-emerald-400/30 cursor-grab active:cursor-grabbing shadow">
+                                <span>⚡ Conectar ao Bot 99Freelas</span>
+                            </a>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <div class="flex items-center justify-between pt-2 border-t border-slate-800/60">
-                <button onclick="cancelLogin()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs px-3.5 py-2 rounded-lg border border-slate-700 transition">
-                    Cancelar
-                </button>
-                <div class="flex items-center space-x-2">
-                    <button onclick="confirmLogin()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs px-4 py-2 rounded-lg transition shadow flex items-center space-x-1.5">
-                        <span>✅ Já Concluí o Login</span>
+            <!-- Aba 2: Colar Cookies Diretamente -->
+            <div id="login-tab-paste" class="hidden space-y-3.5 text-xs text-slate-300">
+                <div class="bg-slate-800/60 p-4 rounded-xl border border-slate-700/50 space-y-2.5">
+                    <label class="block text-slate-300 font-semibold mb-1">Cole aqui seus cookies ou JSON de autenticação:</label>
+                    <textarea id="cookies-input" rows="4" placeholder='{"kmlicn": "...", "kmlicin": "...", "JSESSIONID": "..."} ou kmlicn=...; JSESSIONID=...' class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 font-mono text-xs text-slate-200 focus:outline-none focus:border-emerald-500"></textarea>
+                    <button onclick="submitPastedCookies()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2 rounded-lg transition shadow">
+                        💾 Salvar e Validar Cookies
                     </button>
                 </div>
+            </div>
+
+            <!-- Aba 3: Modo Local com Chrome -->
+            <div id="login-tab-local" class="hidden space-y-3.5 text-xs text-slate-300">
+                <div class="bg-slate-800/60 p-4 rounded-xl border border-slate-700/50 space-y-2.5">
+                    <p class="text-slate-300">Use esta opção caso esteja executando o bot diretamente no seu computador pessoal (Windows):</p>
+                    <button onclick="startLocalChromeLogin()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2 rounded-lg transition shadow flex items-center justify-center space-x-2">
+                        <span>🚀 Abrir Google Chrome no Computador</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Status do Processo de Login -->
+            <div id="login-status-box" class="flex items-center space-x-3 p-3.5 bg-black/60 rounded-xl border border-slate-800">
+                <div id="login-spinner" class="w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin hidden"></div>
+                <div id="login-status-msg" class="font-mono text-xs text-slate-300">Aguardando conexão da sessão...</div>
+            </div>
+
+            <div class="flex items-center justify-between pt-2 border-t border-slate-800/60">
+                <button onclick="closeLoginModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs px-3.5 py-2 rounded-lg border border-slate-700 transition">
+                    Fechar
+                </button>
+                <button onclick="verifySessionHealthNow()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs px-4 py-2 rounded-lg transition shadow flex items-center space-x-1.5">
+                    <span>🔄 Checar Status da Conexão</span>
+                </button>
             </div>
         </div>
     </div>
@@ -358,18 +401,116 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         // --- Gerenciamento do Modal e Fluxo de Login ---
+        function switchLoginTab(tab) {
+            document.getElementById('login-tab-redirect').classList.add('hidden');
+            document.getElementById('login-tab-paste').classList.add('hidden');
+            document.getElementById('login-tab-local').classList.add('hidden');
+
+            document.getElementById('tab-btn-redirect').className = "px-3 py-1.5 font-semibold text-slate-400 hover:text-slate-200 transition";
+            document.getElementById('tab-btn-paste').className = "px-3 py-1.5 font-semibold text-slate-400 hover:text-slate-200 transition";
+            document.getElementById('tab-btn-local').className = "px-3 py-1.5 font-semibold text-slate-400 hover:text-slate-200 transition";
+
+            if (tab === 'redirect') {
+                document.getElementById('login-tab-redirect').classList.remove('hidden');
+                document.getElementById('tab-btn-redirect').className = "px-3 py-1.5 font-semibold text-emerald-400 border-b-2 border-emerald-400 transition";
+            } else if (tab === 'paste') {
+                document.getElementById('login-tab-paste').classList.remove('hidden');
+                document.getElementById('tab-btn-paste').className = "px-3 py-1.5 font-semibold text-emerald-400 border-b-2 border-emerald-400 transition";
+            } else if (tab === 'local') {
+                document.getElementById('login-tab-local').classList.remove('hidden');
+                document.getElementById('tab-btn-local').className = "px-3 py-1.5 font-semibold text-emerald-400 border-b-2 border-emerald-400 transition";
+            }
+        }
+
+        function updateBookmarkletLink() {
+            const targetUrl = window.location.origin + '/api/auth/cookies';
+            const code = `javascript:(function(){const c=document.cookie;if(!c){alert('Nenhum cookie encontrado nesta página. Certifique-se de estar logado no 99Freelas!');return;}fetch('${targetUrl}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cookies:c})}).then(r=>r.json()).then(d=>{if(d.success){alert('🎉 CONECTADO! ' + d.message + ' Retorne ao Painel do Bot para acompanhar.');}else{alert('Erro: '+d.error);}}).catch(e=>alert('Erro na conexão: '+e));})();`;
+            const btn = document.getElementById('bookmarklet-link');
+            if (btn) btn.href = code;
+        }
+
         async function openLoginModal() {
             const modal = document.getElementById('modal-login');
             modal.classList.remove('hidden');
-            document.getElementById('login-status-msg').textContent = "Iniciando Google Chrome...";
-            document.getElementById('login-spinner').className = "w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin";
+            updateBookmarkletLink();
+            verifySessionHealthNow();
+        }
 
-            // Dispara início do login
+        async function verifySessionHealthNow() {
+            const msgEl = document.getElementById('login-status-msg');
+            const spinner = document.getElementById('login-spinner');
+            spinner.classList.remove('hidden');
+            msgEl.textContent = "Verificando sessão com o 99Freelas...";
+            try {
+                const res = await fetch('/api/auth/status').then(r => r.json());
+                spinner.classList.add('hidden');
+                if (res.session_valid) {
+                    msgEl.className = "font-mono text-xs text-emerald-400 font-bold";
+                    msgEl.textContent = "🎉 Sessão 100% válida e ativa no 99Freelas!";
+                    fetchMonitorState();
+                } else {
+                    msgEl.className = "font-mono text-xs text-amber-400 font-bold";
+                    msgEl.textContent = "⚠️ " + (res.session_message || "Sessão não autenticada.");
+                }
+            } catch (e) {
+                spinner.classList.add('hidden');
+                msgEl.textContent = "Aguardando conexão da sessão...";
+            }
+        }
+
+        async function submitPastedCookies() {
+            const val = document.getElementById('cookies-input').value.trim();
+            if (!val) {
+                alert('Cole os cookies antes de salvar!');
+                return;
+            }
+            const msgEl = document.getElementById('login-status-msg');
+            const spinner = document.getElementById('login-spinner');
+            spinner.classList.remove('hidden');
+            msgEl.textContent = "Validando e salvando cookies...";
+
+            try {
+                let payload = {};
+                if (val.startsWith('{')) {
+                    payload = { cookies: JSON.parse(val) };
+                } else {
+                    payload = { cookies: val };
+                }
+                const res = await fetch('/api/auth/cookies', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                }).then(r => r.json());
+
+                if (res.success) {
+                    spinner.classList.add('hidden');
+                    msgEl.className = "font-mono text-xs text-emerald-400 font-bold";
+                    msgEl.textContent = `🎉 ${res.message}`;
+                    setTimeout(() => {
+                        closeLoginModal();
+                        fetchMonitorState();
+                        fetchData();
+                    }, 1500);
+                } else {
+                    spinner.classList.add('hidden');
+                    msgEl.className = "font-mono text-xs text-rose-400 font-bold";
+                    msgEl.textContent = `❌ Erro: ${res.error}`;
+                }
+            } catch (e) {
+                spinner.classList.add('hidden');
+                msgEl.className = "font-mono text-xs text-rose-400 font-bold";
+                msgEl.textContent = `❌ Erro de formato: ${e.message}`;
+            }
+        }
+
+        async function startLocalChromeLogin() {
+            const msgEl = document.getElementById('login-status-msg');
+            const spinner = document.getElementById('login-spinner');
+            spinner.classList.remove('hidden');
+            msgEl.textContent = "Abrindo Chrome no computador...";
             await fetch('/api/auth/login', { method: 'POST' });
-
-            // Inicia polling de status do login
             if (loginPollTimer) clearInterval(loginPollTimer);
-            loginPollTimer = setInterval(pollLoginStatus, 1500);
+            loginPollTimer = setInterval(pollLoginStatus, 2000);
         }
 
         async function pollLoginStatus() {
@@ -383,7 +524,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 }
 
                 if (res.session_valid) {
-                    spinnerEl.className = "hidden";
+                    spinnerEl.classList.add('hidden');
                     msgEl.className = "font-mono text-xs text-emerald-400 font-bold";
                     msgEl.textContent = "🎉 Sucesso! Conta conectada e cookies salvos!";
                     clearInterval(loginPollTimer);
@@ -396,17 +537,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             } catch (e) {
                 console.error("Erro ao consultar status de login:", e);
             }
-        }
-
-        async function confirmLogin() {
-            const msgEl = document.getElementById('login-status-msg');
-            msgEl.textContent = "Capturando cookies da janela do Chrome...";
-            await fetch('/api/auth/confirm', { method: 'POST' });
-        }
-
-        async function cancelLogin() {
-            await fetch('/api/auth/cancel', { method: 'POST' });
-            closeLoginModal();
         }
 
         function closeLoginModal() {
@@ -584,6 +714,13 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+    def do_OPTIONS(self) -> None:
+        self.send_response(200)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.end_headers()
+
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         path = parsed.path
@@ -658,6 +795,31 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         elif parsed.path == "/api/auth/cancel":
             res = login_manager.cancel_login()
             self._send_json(res)
+
+        elif parsed.path == "/api/auth/cookies":
+            raw_cookies = data.get("cookies")
+            cookie_dict = {}
+            if isinstance(raw_cookies, dict):
+                cookie_dict = raw_cookies
+            elif isinstance(raw_cookies, str):
+                for item in raw_cookies.split(";"):
+                    if "=" in item:
+                        k, v = item.strip().split("=", 1)
+                        if k.strip():
+                            cookie_dict[k.strip()] = v.strip()
+
+            if cookie_dict:
+                from bot_99freelas.crawler.session import session_manager
+                session_manager.save_cookies(cookie_dict)
+                health = session_manager.verify_session_health()
+                self._send_json({
+                    "success": True,
+                    "message": f"{len(cookie_dict)} cookies salvos com sucesso!",
+                    "valid": health.get("valid", False),
+                    "health": health,
+                })
+            else:
+                self._send_json({"success": False, "error": "Nenhum cookie válido fornecido."}, 400)
 
         elif parsed.path == "/api/kanban/move":
             task_id = data.get("task_id")
