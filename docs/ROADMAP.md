@@ -14,10 +14,10 @@ Este roadmap define as 4 fases de implementação do projeto. Cada item correspo
 ---
 
 ### 📌 Fase 2: Automação e Monitoramento no 99Freelas
-- [ ] **Card 2.1**: Script de login e persistência de sessão (armazenamento seguro de cookies).
-- [ ] **Card 2.2**: Crawler assíncrono para varredura do feed de novos projetos em tempo real.
-- [ ] **Card 2.3**: Sistema de notificação semiautomática (envio de alerta com proposta pronta para aprovação com 1 clique).
-- [ ] **Card 2.4**: Módulo de envio de propostas autenticado.
+- [x] **Card 2.1**: Script de login e persistência de sessão (armazenamento seguro de cookies).
+- [x] **Card 2.2**: Crawler assíncrono para varredura do feed de novos projetos em tempo real.
+- [x] **Card 2.3**: Sistema de notificação semiautomática (envio de alerta com proposta pronta para aprovação com 1 clique).
+- [x] **Card 2.4**: Módulo de envio de propostas autenticado.
 
 ---
 
