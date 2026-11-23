@@ -1,9 +1,11 @@
 """Servidor Web do Painel de Controle Unificado com Monitor 24h, Terminal ao Vivo e Login Integrado (Fase 5+)."""
 
+import os
 import json
 import logging
 import webbrowser
 import threading
+from typing import Optional
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
 from bot_99freelas.dashboard.service import dashboard_service
