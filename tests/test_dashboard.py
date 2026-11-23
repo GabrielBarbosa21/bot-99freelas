@@ -52,6 +52,12 @@ class TestDashboard(unittest.TestCase):
         self.assertEqual(metrics.pipeline_value, 700.0)  # 450 + 250
         self.assertAlmostEqual(metrics.conversion_rate_percent, 33.3, places=1)
 
+    def test_web_dashboard_template(self):
+        from bot_99freelas.dashboard.web import HTML_TEMPLATE
+        self.assertIn("Bot 99Freelas", HTML_TEMPLATE)
+        self.assertIn("Faturamento Total", HTML_TEMPLATE)
+        self.assertIn("Quadro de Execução", HTML_TEMPLATE)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -19,7 +19,8 @@ def main() -> None:
     subparsers = parser.add_subparsers(dest="command", help="Comandos disponíveis")
 
     # Comando: dashboard
-    subparsers.add_parser("dashboard", help="Exibe o painel de métricas e quadro Kanban")
+    dash_parser = subparsers.add_parser("dashboard", help="Exibe o painel de métricas e quadro Kanban")
+    dash_parser.add_argument("--cli", action="store_true", help="Exibe no terminal em vez de abrir interface web")
 
     # Comando: simulate
     subparsers.add_parser("simulate", help="Executa simulação de ponta a ponta com casos reais")
@@ -42,7 +43,11 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command == "dashboard":
-        render_dashboard()
+        if getattr(args, "cli", False):
+            render_dashboard()
+        else:
+            from bot_99freelas.dashboard.web import start_web_dashboard
+            start_web_dashboard()
     elif args.command == "simulate":
         run_simulation()
     elif args.command == "monitor":
