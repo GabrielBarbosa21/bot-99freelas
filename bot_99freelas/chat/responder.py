@@ -1,8 +1,9 @@
 """Gerador de respostas em tempo real com proteção de escopo (no-free-work & customer-support)."""
 
-from typing import Optional
+from typing import Optional, List
 from bot_99freelas.chat.models import MessageIntent, IntentAnalysis, ChatMessage
 from bot_99freelas.models.project import Project
+from bot_99freelas.intelligence.gemini import gemini_service
 
 
 class ChatResponder:
@@ -14,7 +15,14 @@ class ChatResponder:
         message: ChatMessage,
         project: Optional[Project] = None,
         original_price: float = 280.0,
+        history: Optional[List[ChatMessage]] = None,
     ) -> str:
+        # Se o Gemini AI estiver configurado, tenta resposta generativa ultra-personalizada
+        if gemini_service.is_configured():
+            ai_reply = gemini_service.answer_client_message(message, project, history)
+            if ai_reply and len(ai_reply.strip()) > 15:
+                return ai_reply.strip()
+
         intent = analysis.intent
         client_name = message.sender_name if message.sender_name and message.sender_name != "Cliente" else ""
         greeting = f"Olá, {client_name}!" if client_name else "Olá!"

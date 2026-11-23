@@ -185,6 +185,32 @@ class ProjectFilter:
         final_score = max(0.0, min(100.0, score))
         accepted = final_score >= 50.0
 
+        # 🤖 9. Refinamento e Validação Crítica com IA Gemini (se configurado)
+        try:
+            from bot_99freelas.intelligence.gemini import gemini_service
+            if gemini_service.is_configured() and final_score >= 35.0:
+                ai_eval = gemini_service.evaluate_project(project)
+                if ai_eval and isinstance(ai_eval, dict):
+                    ai_score = float(ai_eval.get("score", final_score))
+                    ai_reason = ai_eval.get("reason", "")
+                    ai_accepted = bool(ai_eval.get("accepted", accepted))
+                    
+                    # Calibra com a IA
+                    final_score = round((final_score * 0.4) + (ai_score * 0.6), 1)
+                    accepted = ai_accepted and (final_score >= 50.0)
+
+                    if ai_reason:
+                        if accepted:
+                            reasons.append(f"🤖 IA Gemini ({ai_score:.0f} pts): {ai_reason}")
+                        else:
+                            warnings.append(f"🤖 IA Gemini rejeitou: {ai_reason}")
+                    
+                    tech_angle = ai_eval.get("technical_angle")
+                    if tech_angle:
+                        reasons.append(f"💡 Ângulo IA sugerido: {tech_angle}")
+        except Exception:
+            pass
+
         if accepted and final_score >= 90.0:
             reasons.append("🔥 Prioridade Máxima Sniper: Score 90+!")
         elif accepted and not reasons:

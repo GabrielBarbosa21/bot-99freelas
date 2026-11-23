@@ -54,10 +54,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <button onclick="openLoginModal()" id="session-badge" class="cursor-pointer bg-slate-800 hover:bg-slate-700 text-slate-400 text-xs px-2.5 py-0.5 rounded-full border border-slate-700 font-medium transition">
                     🔑 Sessão
                 </button>
+
+                <!-- Status IA Gemini -->
+                <button onclick="openAIModal()" id="ai-badge" class="cursor-pointer bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 text-xs px-2.5 py-0.5 rounded-full border border-purple-500/20 font-medium transition">
+                    🤖 IA Gemini
+                </button>
             </div>
 
             <!-- Botões de Ação do Header -->
             <div class="flex items-center space-x-3">
+                <button onclick="openAIModal()" class="text-xs font-semibold px-3 py-1.5 rounded-lg border transition shadow-sm bg-purple-600 hover:bg-purple-500 text-white border-purple-500/30 flex items-center space-x-1.5">
+                    <span>🤖 IA Gemini</span>
+                </button>
                 <button onclick="openLoginModal()" id="btn-auth-header" class="text-xs font-semibold px-3 py-1.5 rounded-lg border transition shadow-sm bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-500/30">
                     🔑 Conectar Conta
                 </button>
@@ -306,6 +314,114 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
     </div>
 
+    <!-- Modal de Configuração e Playground da IA Gemini -->
+    <div id="modal-ai" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-2xl w-full space-y-5 shadow-2xl relative">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div class="flex items-center space-x-2.5">
+                    <span class="text-xl">🤖</span>
+                    <div>
+                        <h3 class="font-bold text-white text-base">Inteligência Artificial (Google Gemini)</h3>
+                        <p class="text-xs text-slate-400">Triagem cirúrgica de projetos e respostas inteligentes no chat com clientes.</p>
+                    </div>
+                </div>
+                <button onclick="closeAIModal()" class="text-slate-400 hover:text-white text-sm transition">✕</button>
+            </div>
+
+            <!-- Seletor de Abas IA -->
+            <div class="flex space-x-2 border-b border-slate-800 pb-2 text-xs">
+                <button id="ai-tab-btn-cfg" onclick="switchAITab('cfg')" class="px-3 py-1.5 font-semibold text-purple-400 border-b-2 border-purple-400 transition">
+                    ⚙️ Chave da API (Gemini)
+                </button>
+                <button id="ai-tab-btn-chat" onclick="switchAITab('chat')" class="px-3 py-1.5 font-semibold text-slate-400 hover:text-slate-200 transition">
+                    💬 Testador de Respostas no Chat
+                </button>
+            </div>
+
+            <!-- Aba Configuração -->
+            <div id="ai-tab-cfg" class="space-y-4 text-xs text-slate-300">
+                <div class="bg-slate-800/60 p-4 rounded-xl border border-slate-700/50 space-y-3">
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="font-semibold text-slate-200">Chave da API do Google Gemini (GEMINI_API_KEY):</label>
+                            <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-purple-400 hover:underline flex items-center space-x-1">
+                                <span>Pegar chave grátis no Google AI Studio</span>
+                                <span class="text-[10px]">↗</span>
+                            </a>
+                        </div>
+                        <input id="ai-key-input" type="password" placeholder="AIzaSy..." class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 font-mono text-xs text-slate-200 focus:outline-none focus:border-purple-500">
+                        <span class="text-slate-500 text-[11px] block mt-1">A chave é gratuita, com limite generoso para milhares de requisições por dia.</span>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3 pt-2">
+                        <div>
+                            <label class="font-semibold text-slate-300 block mb-1">Modelo de IA:</label>
+                            <select id="ai-model-select" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-purple-500">
+                                <option value="gemini-1.5-flash">Gemini 1.5 Flash (Recomendado - Ultra Rápido)</option>
+                                <option value="gemini-2.0-flash">Gemini 2.0 Flash (Mais Recente)</option>
+                            </select>
+                        </div>
+                        <div class="flex items-end">
+                            <button onclick="saveAIConfig()" class="w-full bg-purple-600 hover:bg-purple-500 text-white font-semibold py-2 px-4 rounded-lg transition shadow">
+                                💾 Salvar Chave da IA
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="ai-status-msg" class="p-3 bg-black/60 rounded-xl border border-slate-800 font-mono text-xs text-slate-400">
+                    Consultando status da IA...
+                </div>
+            </div>
+
+            <!-- Aba Testador de Chat -->
+            <div id="ai-tab-chat" class="hidden space-y-4 text-xs text-slate-300">
+                <div class="bg-slate-800/60 p-4 rounded-xl border border-slate-700/50 space-y-3">
+                    <p class="text-slate-400">Simule uma mensagem que um cliente do 99Freelas enviaria para testar a resposta da IA:</p>
+
+                    <!-- Botões Rápidos de Simulação -->
+                    <div class="flex flex-wrap gap-2">
+                        <button onclick="fillChatMessage('Você já desenvolveu bots em Python com web scraping antes? Tem algum exemplo?')" class="bg-slate-700 hover:bg-slate-600 text-slate-200 px-2.5 py-1 rounded text-[11px] transition">
+                            🤖 Pergunta Técnica
+                        </button>
+                        <button onclick="fillChatMessage('Consegue fazer esse projeto pela metade do preço? O orçamento tá apertado.')" class="bg-slate-700 hover:bg-slate-600 text-slate-200 px-2.5 py-1 rounded text-[11px] transition">
+                            💰 Pedido de Desconto
+                        </button>
+                        <button onclick="fillChatMessage('Aproveitando, dá pra colocar mais 3 telas e um app mobile junto no mesmo valor?')" class="bg-slate-700 hover:bg-slate-600 text-slate-200 px-2.5 py-1 rounded text-[11px] transition">
+                            🛡️ Escopo Abusivo (No Free Work)
+                        </button>
+                        <button onclick="fillChatMessage('Gostei muito da proposta! Como fazemos para fechar agora?')" class="bg-slate-700 hover:bg-slate-600 text-slate-200 px-2.5 py-1 rounded text-[11px] transition">
+                            🤝 Fechamento de Venda
+                        </button>
+                    </div>
+
+                    <textarea id="ai-chat-input" rows="3" placeholder="Digite uma dúvida do cliente..." class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 font-sans text-xs text-slate-200 focus:outline-none focus:border-purple-500"></textarea>
+
+                    <div class="flex justify-end">
+                        <button onclick="sendTestChatMessage()" id="btn-send-test-chat" class="bg-purple-600 hover:bg-purple-500 text-white font-semibold py-2 px-4 rounded-lg transition shadow flex items-center space-x-1.5">
+                            <span>✨ Gerar Resposta com IA</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Resposta Gerada -->
+                <div id="ai-chat-response-box" class="hidden bg-slate-950 border border-purple-500/30 rounded-xl p-4 space-y-2">
+                    <div class="flex items-center justify-between">
+                        <span class="font-semibold text-purple-400 text-xs">Resposta Consultiva Sugerida:</span>
+                        <span id="ai-response-badge" class="bg-purple-500/20 text-purple-300 text-[10px] px-2 py-0.5 rounded font-mono">Gemini 1.5 Flash</span>
+                    </div>
+                    <div id="ai-chat-response-text" class="text-slate-200 font-sans text-xs whitespace-pre-line leading-relaxed bg-slate-900/60 p-3 rounded-lg border border-slate-800"></div>
+                </div>
+            </div>
+
+            <div class="flex justify-end pt-2 border-t border-slate-800">
+                <button onclick="closeAIModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs px-4 py-2 rounded-lg transition">
+                    Fechar
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script>
         let isMonitorRunning = false;
         let lastLogCount = 0;
@@ -544,6 +660,119 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             document.getElementById('modal-login').classList.add('hidden');
         }
 
+        // --- Gerenciamento do Modal da IA Gemini ---
+        function switchAITab(tab) {
+            document.getElementById('ai-tab-cfg').classList.add('hidden');
+            document.getElementById('ai-tab-chat').classList.add('hidden');
+            document.getElementById('ai-tab-btn-cfg').className = "px-3 py-1.5 font-semibold text-slate-400 hover:text-slate-200 transition";
+            document.getElementById('ai-tab-btn-chat').className = "px-3 py-1.5 font-semibold text-slate-400 hover:text-slate-200 transition";
+
+            if (tab === 'cfg') {
+                document.getElementById('ai-tab-cfg').classList.remove('hidden');
+                document.getElementById('ai-tab-btn-cfg').className = "px-3 py-1.5 font-semibold text-purple-400 border-b-2 border-purple-400 transition";
+            } else if (tab === 'chat') {
+                document.getElementById('ai-tab-chat').classList.remove('hidden');
+                document.getElementById('ai-tab-btn-chat').className = "px-3 py-1.5 font-semibold text-purple-400 border-b-2 border-purple-400 transition";
+            }
+        }
+
+        async function openAIModal() {
+            document.getElementById('modal-ai').classList.remove('hidden');
+            fetchAIStatus();
+        }
+
+        function closeAIModal() {
+            document.getElementById('modal-ai').classList.add('hidden');
+        }
+
+        async function fetchAIStatus() {
+            try {
+                const res = await fetch('/api/ai/status').then(r => r.json());
+                const badge = document.getElementById('ai-badge');
+                const statusBox = document.getElementById('ai-status-msg');
+
+                if (res.configured) {
+                    badge.className = "cursor-pointer bg-purple-500/10 text-purple-400 text-xs px-2.5 py-0.5 rounded-full border border-purple-500/30 font-medium transition flex items-center space-x-1";
+                    badge.innerHTML = `<span>🤖 IA Gemini: Ativa 🟢</span>`;
+                    if (statusBox) {
+                        statusBox.innerHTML = `✅ <span class="text-emerald-400 font-bold">IA Conectada e Operando!</span> Modelo: <span class="text-purple-300 font-bold">${res.model}</span>. A triagem de projetos e atendimento a clientes estão potencializados com IA.`;
+                    }
+                } else {
+                    badge.className = "cursor-pointer bg-slate-800 text-slate-400 text-xs px-2.5 py-0.5 rounded-full border border-slate-700 font-medium transition hover:bg-slate-700";
+                    badge.innerHTML = `<span>🤖 IA Gemini: Configurar</span>`;
+                    if (statusBox) {
+                        statusBox.innerHTML = `⚠️ <span class="text-amber-400 font-bold">Nenhuma chave da API Gemini configurada.</span> O bot continuará usando o motor de regras e proteção de escopo determinístico.`;
+                    }
+                }
+            } catch (e) {
+                console.error("Erro ao consultar status da IA:", e);
+            }
+        }
+
+        async function saveAIConfig() {
+            const key = document.getElementById('ai-key-input').value.trim();
+            const model = document.getElementById('ai-model-select').value;
+            if (!key) {
+                alert("Cole sua chave da API do Google Gemini antes de salvar!");
+                return;
+            }
+            try {
+                const res = await fetch('/api/ai/config', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({api_key: key, model: model})
+                }).then(r => r.json());
+
+                if (res.success) {
+                    alert("🎉 " + res.message);
+                    fetchAIStatus();
+                } else {
+                    alert("Erro: " + res.error);
+                }
+            } catch (e) {
+                alert("Erro ao salvar configuração da IA: " + e.message);
+            }
+        }
+
+        function fillChatMessage(text) {
+            document.getElementById('ai-chat-input').value = text;
+        }
+
+        async function sendTestChatMessage() {
+            const input = document.getElementById('ai-chat-input');
+            const text = input.value.trim();
+            if (!text) {
+                alert("Digite uma mensagem de teste do cliente!");
+                return;
+            }
+
+            const btn = document.getElementById('btn-send-test-chat');
+            const respBox = document.getElementById('ai-chat-response-box');
+            const respText = document.getElementById('ai-chat-response-text');
+            const badge = document.getElementById('ai-response-badge');
+
+            btn.disabled = true;
+            btn.innerHTML = `<span class="animate-spin">⏳</span><span>Pensando com IA...</span>`;
+            respBox.classList.add('hidden');
+
+            try {
+                const res = await fetch('/api/ai/test-chat', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({message: text})
+                }).then(r => r.json());
+
+                respBox.classList.remove('hidden');
+                respText.textContent = res.reply;
+                badge.textContent = res.used_gemini ? "✨ Google Gemini AI" : "📋 Motor de Resposta Inteligente";
+            } catch (e) {
+                alert("Erro ao gerar resposta: " + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = `<span>✨ Gerar Resposta com IA</span>`;
+            }
+        }
+
         function renderTerminalLogs(logs) {
             const consoleEl = document.getElementById('terminal-console');
             if (logs.length === lastLogCount) return;
@@ -690,6 +919,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         // Inicialização
         fetchData();
         fetchMonitorState();
+        fetchAIStatus();
         setInterval(fetchData, 10000);
         setInterval(fetchMonitorState, 3000);
     </script>
@@ -759,6 +989,14 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         elif path == "/api/auth/status":
             self._send_json(login_manager.get_status())
 
+        elif path == "/api/ai/status":
+            from bot_99freelas.intelligence.gemini import gemini_service
+            self._send_json({
+                "configured": gemini_service.is_configured(),
+                "model": gemini_service.model,
+                "has_key": bool(gemini_service.get_api_key()),
+            })
+
         else:
             self.send_response(404)
             self.end_headers()
@@ -820,6 +1058,45 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
                 })
             else:
                 self._send_json({"success": False, "error": "Nenhum cookie válido fornecido."}, 400)
+
+        elif parsed.path == "/api/ai/config":
+            from bot_99freelas.intelligence.gemini import gemini_service
+            key = data.get("api_key", "").strip()
+            model = data.get("model", "gemini-1.5-flash").strip()
+            if key:
+                gemini_service.set_api_key(key)
+                if model:
+                    gemini_service.model = model
+                self._send_json({
+                    "success": True,
+                    "message": "Chave da IA Gemini salva com sucesso!",
+                    "model": gemini_service.model
+                })
+            else:
+                self._send_json({"success": False, "error": "Chave de API não informada."}, 400)
+
+        elif parsed.path == "/api/ai/test-chat":
+            from bot_99freelas.intelligence.gemini import gemini_service
+            from bot_99freelas.chat.models import ChatMessage
+            from bot_99freelas.chat.classifier import IntentClassifier
+            from bot_99freelas.chat.responder import ChatResponder
+
+            msg_text = data.get("message", "Como funciona seu trabalho? Você tem experiência?")
+            sender = data.get("sender_name", "Cliente Interessado")
+            msg_obj = ChatMessage(id="test", project_id="test", sender_name=sender, text=msg_text, is_from_me=False)
+
+            classifier = IntentClassifier()
+            responder = ChatResponder()
+            analysis = classifier.classify(msg_text)
+            reply = responder.generate_reply(analysis, msg_obj)
+
+            self._send_json({
+                "success": True,
+                "intent": analysis.intent.value,
+                "is_scope_creep": analysis.is_scope_creep,
+                "reply": reply,
+                "used_gemini": gemini_service.is_configured()
+            })
 
         elif parsed.path == "/api/kanban/move":
             task_id = data.get("task_id")
