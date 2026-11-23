@@ -357,8 +357,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         <div>
                             <label class="font-semibold text-slate-300 block mb-1">Modelo de IA:</label>
                             <select id="ai-model-select" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-purple-500">
-                                <option value="gemini-1.5-flash">Gemini 1.5 Flash (Recomendado - Ultra Rápido)</option>
+                                <option value="auto">Auto-Detectar (Recomendado - Escolhe o melhor para sua chave)</option>
                                 <option value="gemini-2.0-flash">Gemini 2.0 Flash (Mais Recente)</option>
+                                <option value="gemini-1.5-flash-latest">Gemini 1.5 Flash Latest (Estável)</option>
+                                <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
                             </select>
                         </div>
                         <div class="flex items-end">

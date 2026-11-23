@@ -20,9 +20,19 @@ CONFIG_AI_FILE = BASE_DIR / "data" / "gemini_config.json"
 class GeminiService:
     """Serviço de inteligência artificial com modelos Google Gemini (1.5 / 2.0 Flash)."""
 
+    FALLBACK_MODELS = [
+        ("v1beta", "gemini-2.0-flash"),
+        ("v1beta", "gemini-1.5-flash-latest"),
+        ("v1beta", "gemini-1.5-flash"),
+        ("v1beta", "gemini-1.5-flash-001"),
+        ("v1", "gemini-1.5-flash"),
+        ("v1", "gemini-pro"),
+    ]
+
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
         self._api_key = api_key or os.getenv("GEMINI_API_KEY") or settings.GEMINI_API_KEY
-        self.model = model or os.getenv("GEMINI_MODEL") or settings.GEMINI_MODEL or "gemini-1.5-flash"
+        self.model = model or os.getenv("GEMINI_MODEL") or settings.GEMINI_MODEL or "gemini-2.0-flash"
+        self.api_version: str = "v1beta"
         self.last_error: str = ""
         self._load_persisted_config()
 
@@ -36,6 +46,8 @@ class GeminiService:
                         self._api_key = data["api_key"]
                     if data.get("model"):
                         self.model = data["model"]
+                    if data.get("api_version"):
+                        self.api_version = data["api_version"]
             except Exception:
                 pass
 
@@ -48,20 +60,67 @@ class GeminiService:
         """Retorna a chave da API corrente."""
         return self._api_key or os.getenv("GEMINI_API_KEY") or settings.GEMINI_API_KEY or ""
 
+    def auto_discover_model(self, api_key: str) -> Optional[str]:
+        """Consulta o Google ListModels para descobrir os modelos suportados por esta chave."""
+        for ver in ["v1beta", "v1"]:
+            url = f"https://generativelanguage.googleapis.com/{ver}/models?key={api_key}"
+            try:
+                req = urllib.request.Request(url, headers={"Content-Type": "application/json"})
+                with urllib.request.urlopen(req, timeout=8) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    models = data.get("models", [])
+                    available = [
+                        m.get("name", "").replace("models/", "")
+                        for m in models
+                        if "generateContent" in m.get("supportedGenerationMethods", [])
+                    ]
+                    # Ordem de preferência de modelos rápidos
+                    for preferred in [
+                        "gemini-2.0-flash",
+                        "gemini-1.5-flash-latest",
+                        "gemini-1.5-flash",
+                        "gemini-1.5-flash-002",
+                        "gemini-1.5-flash-001",
+                        "gemini-pro"
+                    ]:
+                        if preferred in available:
+                            self.model = preferred
+                            self.api_version = ver
+                            logger.info(f"Modelo Gemini detectado automaticamente: {preferred} ({ver})")
+                            return preferred
+                    if available:
+                        self.model = available[0]
+                        self.api_version = ver
+                        return available[0]
+            except Exception as e:
+                logger.debug(f"Erro ao listar modelos no {ver}: {e}")
+        return None
+
     def set_api_key(self, key: str, model: Optional[str] = None) -> None:
         """Define e atualiza a chave da API em tempo de execução e persiste em disco."""
         self._api_key = key.strip()
         os.environ["GEMINI_API_KEY"] = self._api_key
-        if model:
+
+        # Tenta auto-descoberta se nenhum modelo específico foi forçado
+        if not model or model in ("auto", "gemini-1.5-flash"):
+            discovered = self.auto_discover_model(self._api_key)
+            if not discovered and model:
+                self.model = model.strip()
+        elif model:
             self.model = model.strip()
-            os.environ["GEMINI_MODEL"] = self.model
+
+        os.environ["GEMINI_MODEL"] = self.model
         self.last_error = ""
 
         # Persiste em data/gemini_config.json
         try:
             CONFIG_AI_FILE.parent.mkdir(parents=True, exist_ok=True)
             with open(CONFIG_AI_FILE, "w", encoding="utf-8") as f:
-                json.dump({"api_key": self._api_key, "model": self.model}, f, indent=2)
+                json.dump({
+                    "api_key": self._api_key,
+                    "model": self.model,
+                    "api_version": self.api_version
+                }, f, indent=2)
         except Exception:
             pass
 
@@ -72,14 +131,17 @@ class GeminiService:
         json_mode: bool = False,
         timeout: int = 20,
     ) -> Optional[str]:
-        """Executa chamada HTTP direta para a API do Google Gemini com fallback seguro."""
+        """Executa chamada HTTP direta para a API do Google Gemini com fallback seguro e auto-recuperação."""
         api_key = self.get_api_key()
         if not api_key:
             self.last_error = "Nenhuma chave da API Gemini configurada."
             return None
 
-        clean_model = self.model.strip() or "gemini-1.5-flash"
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{clean_model}:generateContent?key={api_key}"
+        # Monta lista de tentativas: o modelo atual primeiro, depois fallbacks
+        attempts = [(self.api_version, self.model)]
+        for ver, mod in self.FALLBACK_MODELS:
+            if (ver, mod) not in attempts:
+                attempts.append((ver, mod))
 
         # Se houver system instruction, combina no prompt para compatibilidade total universal
         final_prompt = prompt
@@ -103,35 +165,50 @@ class GeminiService:
             payload["generationConfig"]["responseMimeType"] = "application/json"
 
         data = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(
-            url,
-            data=data,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
 
-        try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                res_data = json.loads(resp.read().decode("utf-8"))
-                candidates = res_data.get("candidates", [])
-                if candidates:
-                    content = candidates[0].get("content", {})
-                    parts = content.get("parts", [])
-                    if parts:
-                        self.last_error = ""
-                        return parts[0].get("text", "").strip()
-        except urllib.error.HTTPError as e:
-            err_msg = ""
+        for ver, mod in attempts:
+            url = f"https://generativelanguage.googleapis.com/{ver}/models/{mod}:generateContent?key={api_key}"
+            req = urllib.request.Request(
+                url,
+                data=data,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+
             try:
-                err_data = json.loads(e.read().decode("utf-8"))
-                err_msg = err_data.get("error", {}).get("message", e.reason)
-            except Exception:
-                err_msg = str(e.reason)
-            self.last_error = f"Erro HTTP {e.code}: {err_msg}"
-            logger.warning(f"Erro HTTP ao chamar Gemini ({e.code}): {err_msg}")
-        except Exception as e:
-            self.last_error = f"Exceção: {str(e)}"
-            logger.warning(f"Exceção na comunicação com Gemini: {e}")
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    res_data = json.loads(resp.read().decode("utf-8"))
+                    candidates = res_data.get("candidates", [])
+                    if candidates:
+                        content = candidates[0].get("content", {})
+                        parts = content.get("parts", [])
+                        if parts:
+                            self.last_error = ""
+                            # Atualiza modelo fixado
+                            if self.model != mod or self.api_version != ver:
+                                self.model = mod
+                                self.api_version = ver
+                                self.set_api_key(api_key, mod)
+                            return parts[0].get("text", "").strip()
+            except urllib.error.HTTPError as e:
+                err_msg = ""
+                try:
+                    err_data = json.loads(e.read().decode("utf-8"))
+                    err_msg = err_data.get("error", {}).get("message", e.reason)
+                except Exception:
+                    err_msg = str(e.reason)
+                self.last_error = f"Erro HTTP {e.code}: {err_msg}"
+                # Se for 404 (modelo não suportado), continua para o próximo fallback
+                if e.code == 404:
+                    logger.info(f"Modelo {mod} ({ver}) deu 404, tentando próximo fallback...")
+                    continue
+                else:
+                    logger.warning(f"Erro HTTP ao chamar Gemini ({e.code}): {err_msg}")
+                    break
+            except Exception as e:
+                self.last_error = f"Exceção: {str(e)}"
+                logger.warning(f"Exceção na comunicação com Gemini: {e}")
+                break
 
         return None
 
