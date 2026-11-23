@@ -22,9 +22,9 @@ Este roadmap define as 4 fases de implementação do projeto. Cada item correspo
 ---
 
 ### 📌 Fase 3: Módulo de Conversação Inteligente
-- [ ] **Card 3.1**: Monitoramento da caixa de mensagens / chat do 99Freelas.
-- [ ] **Card 3.2**: Classificador de intenção do cliente (dúvida técnica, negociação de preço, prazo, fechamento).
-- [ ] **Card 3.3**: Gerador de respostas em tempo real com proteção de escopo (`no-free-work`).
+- [x] **Card 3.1**: Monitoramento da caixa de mensagens / chat do 99Freelas.
+- [x] **Card 3.2**: Classificador de intenção do cliente (dúvida técnica, negociação de preço, prazo, fechamento).
+- [x] **Card 3.3**: Gerador de respostas em tempo real com proteção de escopo (`no-free-work`).
 
 ---
 
