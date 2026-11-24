@@ -38,6 +38,9 @@ DASHBOARD_HTML_TEMPLATE = """<!DOCTYPE html>
                     <button onclick="openAIModal()" id="badge-ai" class="px-2 py-0.5 rounded-full text-[11px] font-medium bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/20 transition cursor-pointer">
                         ✨ Gemini IA
                     </button>
+                    <button onclick="openWhatsAppModal()" id="badge-whatsapp" class="px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/20 transition cursor-pointer">
+                        📱 WhatsApp
+                    </button>
                 </div>
             </div>
 
@@ -49,6 +52,9 @@ DASHBOARD_HTML_TEMPLATE = """<!DOCTYPE html>
                 </button>
                 <button onclick="fetchData()" title="Atualizar dados" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1.5 rounded-lg border border-slate-700 transition">
                     🔄
+                </button>
+                <button onclick="openWhatsAppModal()" title="WhatsApp Copilot" class="text-xs bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-300 px-2.5 py-1.5 rounded-lg border border-emerald-800/40 transition">
+                    📱
                 </button>
                 <button onclick="openAIModal()" title="Configurações IA" class="text-xs bg-purple-950/60 hover:bg-purple-900/60 text-purple-300 px-2.5 py-1.5 rounded-lg border border-purple-800/40 transition">
                     🤖
@@ -475,6 +481,78 @@ DASHBOARD_HTML_TEMPLATE = """<!DOCTYPE html>
                 <button onclick="saveAIConfig()" class="w-full bg-purple-600 hover:bg-purple-500 text-white font-semibold py-2 rounded-lg transition">
                     Salvar e Testar Conexão com Gemini
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: WHATSAPP COPILOT (Card 6.4 & 6.5) -->
+    <div id="modal-whatsapp" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 w-full max-w-lg rounded-2xl p-6 space-y-4 shadow-2xl">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div class="flex items-center space-x-2">
+                    <span class="text-lg">📱</span>
+                    <h3 class="text-sm font-bold text-white">WhatsApp Copilot & Webhook</h3>
+                </div>
+                <button onclick="closeWhatsAppModal()" class="text-slate-400 hover:text-white text-lg">✕</button>
+            </div>
+
+            <div class="space-y-4 text-xs">
+                <div class="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 text-emerald-300 space-y-1">
+                    <div class="font-semibold">Aprovação de Propostas & Ponte de Chat pelo WhatsApp</div>
+                    <div class="text-[11px] text-emerald-400/80">Receba notificações de projetos qualificados e responda com <strong>SIM &lt;id&gt;</strong> para enviar no 99Freelas sem precisar acessar o computador.</div>
+                </div>
+
+                <div class="flex items-center justify-between p-3 bg-slate-950 rounded-xl border border-slate-800">
+                    <div>
+                        <div class="font-semibold text-slate-200">Ativar Integração WhatsApp</div>
+                        <div class="text-[11px] text-slate-500">Habilita disparos de alertas e leitura de comandos</div>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="whatsapp-enabled-toggle" class="sr-only peer">
+                        <div class="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+                    </label>
+                </div>
+
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-slate-400 mb-1">API URL (Evolution API / Z-API / Gateway)</label>
+                        <input type="text" id="whatsapp-api-url" placeholder="http://localhost:8080" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 font-mono-code focus:outline-none focus:border-emerald-500">
+                    </div>
+                    <div>
+                        <label class="block text-slate-400 mb-1">API Key / Token de Acesso</label>
+                        <input type="password" id="whatsapp-api-key" placeholder="Sua chave de autenticação do gateway" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 font-mono-code focus:outline-none focus:border-emerald-500">
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-slate-400 mb-1">Instância</label>
+                            <input type="text" id="whatsapp-instance" placeholder="bot-99freelas" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 font-mono-code focus:outline-none focus:border-emerald-500">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 mb-1">Seu WhatsApp (DDI+DDD+Num)</label>
+                            <input type="text" id="whatsapp-phone" placeholder="5511999999999" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 font-mono-code focus:outline-none focus:border-emerald-500">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1">
+                    <span class="font-semibold text-slate-300 block">URL de Webhook para Receber Comandos:</span>
+                    <code id="whatsapp-webhook-url" class="block font-mono-code text-[11px] text-indigo-400 select-all break-all">/api/webhook/whatsapp</code>
+                    <span class="text-[10px] text-slate-500 block">Configure esta URL na sua instância para receber <strong>SIM &lt;id&gt;</strong> e <strong>/r &lt;msg&gt;</strong>.</span>
+                </div>
+
+                <div class="flex items-center justify-between pt-2 border-t border-slate-800">
+                    <div class="flex space-x-2">
+                        <button onclick="testWhatsAppMessage()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg transition text-xs">
+                            🧪 Enviar Teste
+                        </button>
+                        <button onclick="triggerHourlyReport()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg transition text-xs">
+                            ⏱️ Relatório Agora
+                        </button>
+                    </div>
+                    <button onclick="saveWhatsAppConfig()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-4 py-1.5 rounded-lg transition shadow text-xs">
+                        Salvar WhatsApp
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -1018,6 +1096,109 @@ DASHBOARD_HTML_TEMPLATE = """<!DOCTYPE html>
             }
         }
 
+        // WhatsApp Modal & Config (Card 6.4 & 6.6)
+        function openWhatsAppModal() {
+            document.getElementById('modal-whatsapp').classList.remove('hidden');
+            fetchWhatsAppConfig();
+        }
+
+        function closeWhatsAppModal() {
+            document.getElementById('modal-whatsapp').classList.add('hidden');
+        }
+
+        async function fetchWhatsAppConfig() {
+            try {
+                const cfg = await fetch('/api/whatsapp/config').then(r => r.json());
+                const toggle = document.getElementById('whatsapp-enabled-toggle');
+                const url = document.getElementById('whatsapp-api-url');
+                const key = document.getElementById('whatsapp-api-key');
+                const inst = document.getElementById('whatsapp-instance');
+                const phone = document.getElementById('whatsapp-phone');
+                const badge = document.getElementById('badge-whatsapp');
+
+                if (toggle) toggle.checked = !!cfg.enabled;
+                if (url) url.value = cfg.api_url || '';
+                if (key) key.value = cfg.api_key || '';
+                if (inst) inst.value = cfg.instance || '';
+                if (phone) phone.value = cfg.phone || '';
+
+                if (badge) {
+                    if (cfg.enabled) {
+                        badge.className = "px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/20 transition cursor-pointer";
+                        badge.textContent = "📱 WhatsApp Ativo";
+                    } else {
+                        badge.className = "px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-700 transition cursor-pointer";
+                        badge.textContent = "📱 WhatsApp";
+                    }
+                }
+            } catch (e) {
+                console.error("Erro ao carregar config WhatsApp:", e);
+            }
+        }
+
+        async function saveWhatsAppConfig() {
+            const enabled = document.getElementById('whatsapp-enabled-toggle').checked;
+            const apiUrl = document.getElementById('whatsapp-api-url').value.trim();
+            const apiKey = document.getElementById('whatsapp-api-key').value.trim();
+            const instance = document.getElementById('whatsapp-instance').value.trim();
+            const phone = document.getElementById('whatsapp-phone').value.trim();
+
+            try {
+                const res = await fetch('/api/whatsapp/config', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        enabled: enabled,
+                        api_url: apiUrl,
+                        api_key: apiKey,
+                        instance: instance,
+                        phone: phone
+                    })
+                }).then(r => r.json());
+
+                if (res.success) {
+                    alert("🎉 Configurações do WhatsApp salvas com sucesso!");
+                    fetchWhatsAppConfig();
+                } else {
+                    alert("Erro ao salvar: " + res.error);
+                }
+            } catch (e) {
+                alert("Erro ao comunicar com o servidor: " + e.message);
+            }
+        }
+
+        async function testWhatsAppMessage() {
+            const phone = document.getElementById('whatsapp-phone').value.trim();
+            try {
+                const res = await fetch('/api/whatsapp/test', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        phone: phone,
+                        message: "🧪 Teste de Conectividade do Bot 99Freelas!\nSeu WhatsApp Copilot está pronto para receber alertas e despachar propostas."
+                    })
+                }).then(r => r.json());
+
+                alert(res.success ? "✅ " + res.message : "⚠️ " + res.message);
+            } catch (e) {
+                alert("Erro ao disparar teste: " + e.message);
+            }
+        }
+
+        async function triggerHourlyReport() {
+            try {
+                const res = await fetch('/api/whatsapp/send-report', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({})
+                }).then(r => r.json());
+
+                alert(res.success ? "✅ " + res.message : "⚠️ " + res.message);
+            } catch (e) {
+                alert("Erro ao disparar relatório: " + e.message);
+            }
+        }
+
         function escapeHtml(s) {
             return (s || '').replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
         }
@@ -1026,6 +1207,7 @@ DASHBOARD_HTML_TEMPLATE = """<!DOCTYPE html>
         fetchData();
         fetchMonitorState();
         fetchSearchConfig();
+        fetchWhatsAppConfig();
         setInterval(fetchData, 10000);
         setInterval(fetchMonitorState, 3000);
     </script>

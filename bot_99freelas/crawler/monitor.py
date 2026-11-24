@@ -1,6 +1,7 @@
 """Monitor assíncrono contínuo de novos projetos com resiliência 24h e integração Web (Cards 5.1 & 5.3)."""
 
 import asyncio
+import time
 import logging
 from logging.handlers import RotatingFileHandler
 import urllib.request
@@ -72,6 +73,7 @@ class FreelasMonitor:
         self.project_filter = ProjectFilter()
         self.pricing_calc = PricingCalculator()
         self.proposal_gen = ProposalGenerator(pricing_calc=self.pricing_calc)
+        self.last_hourly_report = time.time()
 
     def log(self, message: str, level: str = "info") -> None:
         """Emite mensagem de log para console, arquivo rotativo e callback web."""
@@ -199,7 +201,7 @@ class FreelasMonitor:
         pricing = self.pricing_calc.calculate(project)
         proposal = self.proposal_gen.generate(project, pricing=pricing)
 
-        db.record_proposal(
+        prop_id = db.record_proposal(
             project_id=project.id,
             price=proposal.price,
             delivery_days=proposal.delivery_days,
@@ -223,6 +225,13 @@ class FreelasMonitor:
             await telegram_notifier.send_proposal_alert(project, proposal)
         except Exception as e:
             self.log(f"   ⚠️ Aviso Telegram: {e}", level="warning")
+
+        # 7. Notificação via WhatsApp Copilot para Aprovação Humana (Card 6.4)
+        try:
+            from bot_99freelas.notifier.whatsapp import whatsapp_service
+            whatsapp_service.send_proposal_alert(project, proposal, prop_id, score=eval_result.score)
+        except Exception as e:
+            self.log(f"   ⚠️ Aviso WhatsApp: {e}", level="warning")
 
     async def run_loop(self, single_run: bool = False) -> None:
         """Inicia o ciclo contínuo de monitoramento resiliente 24h."""
@@ -255,6 +264,17 @@ class FreelasMonitor:
 
                 if new_count == 0:
                     self.log("😴 Nenhum projeto novo desde a última checagem.")
+
+                # Disparo periódico de relatório de 1 hora no WhatsApp (Card 6.6)
+                now_ts = time.time()
+                if now_ts - self.last_hourly_report >= 3600:
+                    self.last_hourly_report = now_ts
+                    try:
+                        from bot_99freelas.notifier.whatsapp import whatsapp_service
+                        self.log("⏱️ Disparando relatório periódico de 1 hora para o WhatsApp...")
+                        whatsapp_service.send_hourly_report()
+                    except Exception as e:
+                        self.log(f"⚠️ Aviso no relatório horário WhatsApp: {e}", level="warning")
 
                 # Atualiza evento de scan no controller se importável
                 try:

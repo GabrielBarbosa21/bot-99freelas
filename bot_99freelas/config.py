@@ -83,6 +83,22 @@ class Settings(BaseModel):
     TELEGRAM_BOT_TOKEN: str = Field(default_factory=lambda: os.getenv("TELEGRAM_BOT_TOKEN", ""))
     TELEGRAM_CHAT_ID: str = Field(default_factory=lambda: os.getenv("TELEGRAM_CHAT_ID", ""))
 
+    # WhatsApp Copilot (Card 6.4, 6.5, 6.6)
+    WHATSAPP_ENABLED: bool = Field(
+        default_factory=lambda: os.getenv("WHATSAPP_ENABLED", "false").lower() in ("true", "1", "yes")
+    )
+    WHATSAPP_API_URL: str = Field(
+        default_factory=lambda: os.getenv("WHATSAPP_API_URL", "http://localhost:8080")
+    )
+    WHATSAPP_API_KEY: str = Field(default_factory=lambda: os.getenv("WHATSAPP_API_KEY", ""))
+    WHATSAPP_INSTANCE: str = Field(
+        default_factory=lambda: os.getenv("WHATSAPP_INSTANCE", "bot99freelas")
+    )
+    WHATSAPP_PHONE: str = Field(default_factory=lambda: os.getenv("WHATSAPP_PHONE", ""))
+    WHATSAPP_WEBHOOK_SECRET: str = Field(
+        default_factory=lambda: os.getenv("WHATSAPP_WEBHOOK_SECRET", "")
+    )
+
     # Inteligência Artificial (Google Gemini)
     GEMINI_API_KEY: str = Field(default_factory=lambda: os.getenv("GEMINI_API_KEY", ""))
     GEMINI_MODEL: str = Field(

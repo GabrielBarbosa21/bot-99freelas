@@ -247,5 +247,54 @@ class Database:
         self._save()
         return True, f"Proposta #{prop_id} descartada sem gasto de conexão."
 
+    def get_hourly_metrics(self) -> Dict[str, Any]:
+        """Calcula métricas das últimas horas e consolida estatísticas para o relatório executivo (Card 6.6)."""
+        now = datetime.now()
+        projects = self._data.get("projects", {})
+        proposals = self._data.get("proposals", [])
+
+        last_hour_projects = 0
+        last_hour_rejected = 0
+        last_hour_approved = 0
+        rejection_reasons: Dict[str, int] = {}
+
+        for p in projects.values():
+            first_seen = p.get("first_seen_at")
+            if first_seen:
+                try:
+                    dt = datetime.fromisoformat(first_seen)
+                    delta_seconds = (now - dt).total_seconds()
+                    if delta_seconds <= 3600:
+                        last_hour_projects += 1
+                        if p.get("status") == "rejected":
+                            last_hour_rejected += 1
+                            for r in p.get("reasons", "").split(";"):
+                                r = r.strip()
+                                if r:
+                                    rejection_reasons[r] = rejection_reasons.get(r, 0) + 1
+                        else:
+                            last_hour_approved += 1
+                except Exception:
+                    pass
+
+        pending_count = len(self.get_pending_proposals())
+        used_connections = self.get_today_connections_used()
+        remaining_connections = max(0, settings.MAX_CONNECTIONS_PER_DAY - used_connections)
+
+        top_rejections = sorted(rejection_reasons.items(), key=lambda x: x[1], reverse=True)[:3]
+
+        return {
+            "period": "Última 1 hora",
+            "projects_scanned": last_hour_projects,
+            "projects_approved": last_hour_approved,
+            "projects_rejected": last_hour_rejected,
+            "top_rejection_reasons": top_rejections,
+            "pending_proposals": pending_count,
+            "connections_used_today": used_connections,
+            "connections_remaining": remaining_connections,
+            "total_projects_stored": len(projects),
+            "total_proposals_stored": len(proposals),
+        }
+
 
 db = Database()

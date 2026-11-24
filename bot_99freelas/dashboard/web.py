@@ -145,6 +145,10 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         elif path == "/api/search/config":
             self._send_json(db.get_search_config())
 
+        elif path == "/api/whatsapp/config":
+            from bot_99freelas.notifier.whatsapp import whatsapp_service
+            self._send_json(whatsapp_service._load_config())
+
         else:
             self.send_response(404)
             self.end_headers()
@@ -186,6 +190,44 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         elif parsed.path == "/api/auth/web-logout":
             cookie_val = f"{SESSION_COOKIE_NAME}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax"
             self._send_json({"success": True}, headers={"Set-Cookie": cookie_val})
+            return
+
+        # Webhook público do WhatsApp (Evolution API / Z-API / Payload Flat) - Card 6.4 & 6.5
+        elif parsed.path == "/api/webhook/whatsapp":
+            from bot_99freelas.notifier.whatsapp import whatsapp_service
+
+            from_me = False
+            sender = ""
+            text = ""
+
+            # Formato Evolution API v1/v2
+            if "data" in data and isinstance(data["data"], dict):
+                d = data["data"]
+                key = d.get("key", {})
+                from_me = key.get("fromMe", False)
+                sender = key.get("remoteJid", "")
+                msg_obj = d.get("message", {})
+                if isinstance(msg_obj, dict):
+                    text = msg_obj.get("conversation") or msg_obj.get("extendedTextMessage", {}).get("text") or ""
+
+            # Formato Z-API / Payload Flat
+            if not text:
+                from_me = data.get("fromMe", False)
+                sender = data.get("phone") or data.get("sender") or sender
+                raw_text = data.get("text")
+                if isinstance(raw_text, dict):
+                    text = raw_text.get("message", "")
+                elif isinstance(raw_text, str):
+                    text = raw_text
+
+            if from_me or not text:
+                self._send_json({"success": True, "ignored": True})
+                return
+
+            reply = whatsapp_service.process_incoming_command(text, sender)
+            if reply:
+                whatsapp_service.send_message(reply, recipient=sender)
+            self._send_json({"success": True, "reply": reply})
             return
 
         # Para todos os demais POSTs, exige autenticação
@@ -359,6 +401,29 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
                 "success": True,
                 "message": "Filtros de busca atualizados com sucesso!",
                 "config": updated,
+            })
+
+        elif parsed.path == "/api/whatsapp/config":
+            from bot_99freelas.notifier.whatsapp import whatsapp_service
+            saved = whatsapp_service.save_config(data)
+            self._send_json({"success": True, "config": saved})
+
+        elif parsed.path == "/api/whatsapp/test":
+            from bot_99freelas.notifier.whatsapp import whatsapp_service
+            msg = data.get("message", "🧪 Teste de conectividade do Bot 99Freelas via WhatsApp!")
+            recipient = data.get("phone")
+            ok = whatsapp_service.send_message(msg, recipient=recipient)
+            self._send_json({
+                "success": ok,
+                "message": "Mensagem de teste enviada com sucesso!" if ok else "Falha ao enviar mensagem pelo WhatsApp."
+            })
+
+        elif parsed.path == "/api/whatsapp/send-report":
+            from bot_99freelas.notifier.whatsapp import whatsapp_service
+            ok = whatsapp_service.send_hourly_report()
+            self._send_json({
+                "success": ok,
+                "message": "Relatório periódico enviado com sucesso para o WhatsApp!" if ok else "Falha ao enviar relatório pelo WhatsApp."
             })
 
         else:
