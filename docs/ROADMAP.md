@@ -45,7 +45,7 @@ Este roadmap define as 4 fases de implementação do projeto. Cada item correspo
 
 ### 📌 Fase 6: WhatsApp Copilot, Controle Granular & Segurança/Redesign do Painel
 - [x] **Card 6.1**: Autenticação e Segurança do Painel Web (Login Seguro & Proteção de Rotas).
-- [ ] **Card 6.2**: Redesign Visual Minimalista da UI (Dashboard Clean & Fila de Aprovação).
+- [x] **Card 6.2**: Redesign Visual Minimalista da UI (Dashboard Clean & Fila de Aprovação).
 - [ ] **Card 6.3**: Controle Granular de Varredura e Filtros de Busca (Tags, Categorias e Blacklist).
 - [ ] **Card 6.4**: WhatsApp Copilot — Aprovação de Conexões e Propostas com 1 Comando.
 - [ ] **Card 6.5**: Ponte Bidirecional WhatsApp ➔ Chat do 99Freelas (Notificação e Resposta).
