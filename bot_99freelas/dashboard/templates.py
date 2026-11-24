@@ -181,9 +181,9 @@ DASHBOARD_HTML_TEMPLATE = """<!DOCTYPE html>
                     <p class="text-xs text-slate-400">Histórico de varreduras com pontuação semântica de relevância.</p>
                 </div>
                 <div class="flex items-center space-x-2">
-                    <button onclick="filterProjectsTable('all')" class="feed-filter-btn px-2.5 py-1 rounded-md text-xs bg-slate-800 text-white font-medium">Todos</button>
-                    <button onclick="filterProjectsTable('approved')" class="feed-filter-btn px-2.5 py-1 rounded-md text-xs text-slate-400 hover:text-white">Aprovados</button>
-                    <button onclick="filterProjectsTable('rejected')" class="feed-filter-btn px-2.5 py-1 rounded-md text-xs text-slate-400 hover:text-white">Descartados</button>
+                    <button onclick="filterProjectsTable('all', this)" class="feed-filter-btn px-2.5 py-1 rounded-md text-xs bg-slate-800 text-white font-medium">Todos</button>
+                    <button onclick="filterProjectsTable('approved', this)" class="feed-filter-btn px-2.5 py-1 rounded-md text-xs text-slate-400 hover:text-white">Aprovados</button>
+                    <button onclick="filterProjectsTable('rejected', this)" class="feed-filter-btn px-2.5 py-1 rounded-md text-xs text-slate-400 hover:text-white">Descartados</button>
                 </div>
             </div>
 
@@ -650,7 +650,7 @@ DASHBOARD_HTML_TEMPLATE = """<!DOCTYPE html>
                         <div class="space-y-1">
                             <div class="flex items-center space-x-2">
                                 <span class="bg-purple-500/10 text-purple-300 font-bold px-2 py-0.5 rounded text-[11px] border border-purple-500/20">
-                                    Score ${p.score ? p.score.toFixed(0) : '85'}/100
+                                    Score ${p.score ? Number(p.score).toFixed(0) : '85'}/100
                                 </span>
                                 <h3 class="font-semibold text-sm text-slate-100">${escapeHtml(p.project_title || 'Projeto 99Freelas')}</h3>
                                 ${p.project_url ? `<a href="${p.project_url}" target="_blank" class="text-xs text-indigo-400 hover:text-indigo-300">↗</a>` : ''}
@@ -660,7 +660,7 @@ DASHBOARD_HTML_TEMPLATE = """<!DOCTYPE html>
                                 <span>•</span>
                                 <span>Concorrência: <strong>${p.proposals_count || 0} propostas</strong></span>
                                 <span>•</span>
-                                <span>Preço Sugerido: <strong class="text-emerald-400">R$ ${p.price.toFixed(2)}</strong> (${p.delivery_days} dias)</span>
+                                <span>Preço Sugerido: <strong class="text-emerald-400">R$ ${(p.price ? Number(p.price).toFixed(2) : '0.00')}</strong> (${p.delivery_days || 1} dias)</span>
                             </div>
                         </div>
                         <div class="flex items-center space-x-2 self-end sm:self-auto">
@@ -721,7 +721,7 @@ DASHBOARD_HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         function openProposalModal(propId) {
-            const p = pendingProposals.find(item => item.id === propId);
+            const p = pendingProposals.find(item => item.id == propId);
             if (!p) return;
             currentModalProposal = p;
 
@@ -817,11 +817,14 @@ DASHBOARD_HTML_TEMPLATE = """<!DOCTYPE html>
             }).join('');
         }
 
-        function filterProjectsTable(type) {
+        function filterProjectsTable(type, btn) {
             document.querySelectorAll('.feed-filter-btn').forEach(b => {
                 b.className = "feed-filter-btn px-2.5 py-1 rounded-md text-xs text-slate-400 hover:text-white";
             });
-            event.target.className = "feed-filter-btn px-2.5 py-1 rounded-md text-xs bg-slate-800 text-white font-medium";
+            const targetBtn = btn || (typeof event !== 'undefined' ? event.target : null);
+            if (targetBtn) {
+                targetBtn.className = "feed-filter-btn px-2.5 py-1 rounded-md text-xs bg-slate-800 text-white font-medium";
+            }
 
             if (type === 'all') {
                 renderProjectsTable(allProjects);
@@ -1175,7 +1178,7 @@ DASHBOARD_HTML_TEMPLATE = """<!DOCTYPE html>
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
                         phone: phone,
-                        message: "🧪 Teste de Conectividade do Bot 99Freelas!\nSeu WhatsApp Copilot está pronto para receber alertas e despachar propostas."
+                        message: "🧪 Teste de Conectividade do Bot 99Freelas!\\nSeu WhatsApp Copilot está pronto para receber alertas e despachar propostas."
                     })
                 }).then(r => r.json());
 

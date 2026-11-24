@@ -58,6 +58,21 @@ class TestDashboard(unittest.TestCase):
         self.assertIn("Faturamento Total", HTML_TEMPLATE)
         self.assertIn("Quadro de Execução", HTML_TEMPLATE)
 
+    def test_dashboard_javascript_syntax(self):
+        import re
+        import shutil
+        import subprocess
+        from bot_99freelas.dashboard.templates import DASHBOARD_HTML_TEMPLATE
+
+        if not shutil.which("node"):
+            return
+
+        scripts = re.findall(r"<script(?:\s+[^>]*)?>(.*?)</script>", DASHBOARD_HTML_TEMPLATE, re.DOTALL)
+        inline_scripts = [s for s in scripts if s.strip()]
+        for idx, s in enumerate(inline_scripts):
+            res = subprocess.run(["node", "--check"], input=s, text=True, capture_output=True)
+            self.assertEqual(res.returncode, 0, f"JS syntax error in script #{idx}: {res.stderr}")
+
 
 if __name__ == "__main__":
     unittest.main()
