@@ -40,12 +40,22 @@ class Settings(BaseModel):
     MIN_BUDGET: float = Field(default_factory=lambda: float(os.getenv("MIN_BUDGET", "100.0")))
     MARKET_DISCOUNT_PERCENTAGE: float = Field(default_factory=lambda: float(os.getenv("MARKET_DISCOUNT_PERCENTAGE", "20.0")))
 
-    # Modo 100% Autônomo (Despacho direto no 99Freelas)
+    # Modo de Envio (Trava Human-in-the-Loop: falso por padrão para exigir aprovação)
     AUTO_SUBMIT_ENABLED: bool = Field(
-        default_factory=lambda: os.getenv("AUTO_SUBMIT_ENABLED", "true").lower() in ("true", "1", "yes")
+        default_factory=lambda: os.getenv("AUTO_SUBMIT_ENABLED", "false").lower() in ("true", "1", "yes")
     )
     AUTO_SUBMIT_MIN_SCORE: float = Field(
         default_factory=lambda: float(os.getenv("AUTO_SUBMIT_MIN_SCORE", "80.0"))
+    )
+
+    # Segurança e Autenticação do Painel Web (Card 6.1)
+    AUTH_ENABLED: bool = Field(
+        default_factory=lambda: os.getenv("AUTH_ENABLED", "true").lower() in ("true", "1", "yes")
+    )
+    ADMIN_USERNAME: str = Field(default_factory=lambda: os.getenv("ADMIN_USERNAME", "admin"))
+    ADMIN_PASSWORD: str = Field(default_factory=lambda: os.getenv("ADMIN_PASSWORD", "admin123"))
+    SESSION_SECRET: str = Field(
+        default_factory=lambda: os.getenv("SESSION_SECRET", "bot99freelas-secure-session-key-change-me")
     )
 
     # Notificações no Telegram (Opcional)

@@ -14,6 +14,17 @@ from bot_99freelas.dashboard.models import TaskStatus
 from bot_99freelas.crawler.controller import monitor_controller
 from bot_99freelas.crawler.browser_login import login_manager
 from bot_99freelas.storage.db import db
+from bot_99freelas.dashboard.auth import (
+    LOGIN_HTML_TEMPLATE,
+    SESSION_COOKIE_NAME,
+    SESSION_TTL_SECONDS,
+    is_request_authenticated,
+    generate_session_token,
+    validate_credentials,
+    check_rate_limit,
+    record_failed_login,
+    clear_failed_login,
+)
 
 logger = logging.getLogger("WebDashboard")
 
@@ -75,6 +86,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <button onclick="fetchData()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg border border-slate-700 transition">
                     🔄 Atualizar
                 </button>
+                <a href="/logout" title="Sair do painel" class="text-xs bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-300 px-3 py-1.5 rounded-lg border border-slate-700 transition flex items-center space-x-1">
+                    <span>🚪 Sair</span>
+                </a>
             </div>
         </div>
     </header>
@@ -948,14 +962,36 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         # Desativa logs HTTP de acesso no terminal
         pass
 
-    def _send_json(self, data: dict, status: int = 200) -> None:
+    def _send_json(self, data: dict, status: int = 200, headers: Optional[dict] = None) -> None:
         payload = json.dumps(data, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(payload)))
         self.send_header("Access-Control-Allow-Origin", "*")
+        if headers:
+            for k, v in headers.items():
+                self.send_header(k, v)
         self.end_headers()
         self.wfile.write(payload)
+
+    def _send_html(self, html: str, status: int = 200, headers: Optional[dict] = None) -> None:
+        payload = html.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(payload)))
+        if headers:
+            for k, v in headers.items():
+                self.send_header(k, v)
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def _redirect(self, location: str, headers: Optional[dict] = None) -> None:
+        self.send_response(302)
+        self.send_header("Location", location)
+        if headers:
+            for k, v in headers.items():
+                self.send_header(k, v)
+        self.end_headers()
 
     def do_OPTIONS(self) -> None:
         self.send_response(200)
@@ -968,13 +1004,28 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
 
+        if path == "/login":
+            if is_request_authenticated(self.headers):
+                self._redirect("/")
+                return
+            self._send_html(LOGIN_HTML_TEMPLATE)
+            return
+
+        if path == "/logout":
+            cookie_hdr = f"{SESSION_COOKIE_NAME}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax"
+            self._redirect("/login", {"Set-Cookie": cookie_hdr})
+            return
+
+        # Checagem de autenticação para todas as demais rotas (Card 6.1)
+        if not is_request_authenticated(self.headers):
+            if path.startswith("/api/"):
+                self._send_json({"error": "Acesso não autorizado. Faça login primeiro.", "authenticated": False}, 401)
+            else:
+                self._redirect("/login")
+            return
+
         if path == "/":
-            payload = HTML_TEMPLATE.encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(payload)))
-            self.end_headers()
-            self.wfile.write(payload)
+            self._send_html(HTML_TEMPLATE)
 
         elif path == "/api/metrics":
             metrics = dashboard_service.calculate_metrics()
@@ -1022,6 +1073,41 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             data = json.loads(body)
         except Exception:
             data = {}
+
+        # Endpoints de autenticação pública do painel (Card 6.1)
+        if parsed.path == "/api/auth/web-login":
+            client_ip = self.client_address[0] if self.client_address else "127.0.0.1"
+            allowed, wait_sec = check_rate_limit(client_ip)
+            if not allowed:
+                self._send_json({
+                    "success": False,
+                    "error": f"Muitas tentativas falhas. Aguarde {wait_sec}s antes de tentar novamente."
+                }, 429)
+                return
+
+            username = data.get("username", "")
+            password = data.get("password", "")
+
+            if validate_credentials(username, password):
+                clear_failed_login(client_ip)
+                token = generate_session_token(username)
+                cookie_val = f"{SESSION_COOKIE_NAME}={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={SESSION_TTL_SECONDS}"
+                self._send_json({"success": True, "message": "Login realizado com sucesso!"}, headers={"Set-Cookie": cookie_val})
+                return
+            else:
+                record_failed_login(client_ip)
+                self._send_json({"success": False, "error": "Usuário ou senha incorretos."}, 401)
+                return
+
+        elif parsed.path == "/api/auth/web-logout":
+            cookie_val = f"{SESSION_COOKIE_NAME}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax"
+            self._send_json({"success": True}, headers={"Set-Cookie": cookie_val})
+            return
+
+        # Para todos os demais POSTs, exige autenticação
+        if not is_request_authenticated(self.headers):
+            self._send_json({"error": "Acesso não autorizado. Faça login primeiro.", "authenticated": False}, 401)
+            return
 
         if parsed.path == "/api/monitor/start":
             res = monitor_controller.start()
