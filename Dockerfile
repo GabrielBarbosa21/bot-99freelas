@@ -30,7 +30,7 @@ EXPOSE 5000
 
 # Healthcheck para garantir que o painel e o bot estão ativos
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-  CMD curl -f http://localhost:5000/api/metrics || exit 1
+  CMD curl -f http://localhost:5000/health || exit 1
 
 # Comando de inicialização: Inicia o painel web que aciona o monitor 24h
 CMD ["python", "-m", "bot_99freelas", "dashboard"]

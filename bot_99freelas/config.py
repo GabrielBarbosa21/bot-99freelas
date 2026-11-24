@@ -70,8 +70,8 @@ class Settings(BaseModel):
     AUTH_ENABLED: bool = Field(
         default_factory=lambda: os.getenv("AUTH_ENABLED", "true").lower() in ("true", "1", "yes")
     )
-    ADMIN_USERNAME: str = Field(default_factory=lambda: os.getenv("ADMIN_USERNAME", "admin"))
-    ADMIN_PASSWORD: str = Field(default_factory=lambda: os.getenv("ADMIN_PASSWORD", "admin123"))
+    ADMIN_USERNAME: str = Field(default_factory=lambda: os.getenv("ADMIN_USERNAME", "gabriel"))
+    ADMIN_PASSWORD: str = Field(default_factory=lambda: os.getenv("ADMIN_PASSWORD", "IsaBielPaulo@312928."))
     SESSION_SECRET: str = Field(
         default_factory=lambda: os.getenv("SESSION_SECRET", "bot99freelas-secure-session-key-change-me")
     )

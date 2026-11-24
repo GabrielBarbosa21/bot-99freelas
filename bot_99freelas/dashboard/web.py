@@ -82,6 +82,11 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
 
+        # Healthcheck público para Render, Docker e monitoramento de nuvem
+        if path in ("/health", "/api/health"):
+            self._send_json({"status": "healthy", "service": "bot-99freelas"})
+            return
+
         if path == "/login":
             if is_request_authenticated(self.headers):
                 self._redirect("/")
