@@ -41,3 +41,14 @@ Este roadmap define as 4 fases de implementação do projeto. Cada item correspo
 - [x] **Card 5.3**: Motor de resiliência e auto-recuperação contínua 24h (retentativas com backoff exponencial, checagem contínua de sessão e rotação automática de logs).
 - [x] **Card 5.4**: Inicialização automática no Windows (`shell:startup`) e modo silencioso em segundo plano (`iniciar_silencioso.vbs`, `parar_bot.bat`).
 
+---
+
+### 📌 Fase 6: WhatsApp Copilot, Controle Granular & Segurança/Redesign do Painel
+- [ ] **Card 6.1**: Autenticação e Segurança do Painel Web (Login Seguro & Proteção de Rotas).
+- [ ] **Card 6.2**: Redesign Visual Minimalista da UI (Dashboard Clean & Fila de Aprovação).
+- [ ] **Card 6.3**: Controle Granular de Varredura e Filtros de Busca (Tags, Categorias e Blacklist).
+- [ ] **Card 6.4**: WhatsApp Copilot — Aprovação de Conexões e Propostas com 1 Comando.
+- [ ] **Card 6.5**: Ponte Bidirecional WhatsApp ➔ Chat do 99Freelas (Notificação e Resposta).
+- [ ] **Card 6.6**: Relatório Periódico de 1 Hora no WhatsApp (Métricas e Execução).
+
+
