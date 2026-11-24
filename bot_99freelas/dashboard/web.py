@@ -142,6 +142,9 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         elif path == "/api/proposals/pending":
             self._send_json(db.get_pending_proposals())
 
+        elif path == "/api/search/config":
+            self._send_json(db.get_search_config())
+
         else:
             self.send_response(404)
             self.end_headers()
@@ -349,6 +352,14 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             reason = data.get("reason", "Descartado pelo usuário no painel")
             success, msg = db.reject_proposal(prop_id, reason)
             self._send_json({"success": success, "message": msg}, 200 if success else 400)
+
+        elif parsed.path == "/api/search/config":
+            updated = db.save_search_config(data)
+            self._send_json({
+                "success": True,
+                "message": "Filtros de busca atualizados com sucesso!",
+                "config": updated,
+            })
 
         else:
             self.send_response(404)

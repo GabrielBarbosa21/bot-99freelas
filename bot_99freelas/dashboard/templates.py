@@ -136,6 +136,9 @@ DASHBOARD_HTML_TEMPLATE = """<!DOCTYPE html>
             <button onclick="switchTab('tab-logs')" id="nav-tab-logs" class="px-4 py-2.5 border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition flex items-center space-x-1.5">
                 <span>🖥️ Terminal de Logs</span>
             </button>
+            <button onclick="switchTab('tab-filters')" id="nav-tab-filters" class="px-4 py-2.5 border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition flex items-center space-x-1.5">
+                <span>🎯 Filtros de Busca</span>
+            </button>
             <button onclick="switchTab('tab-chat')" id="nav-tab-chat" class="px-4 py-2.5 border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition flex items-center space-x-1.5">
                 <span>💬 Teste Chat IA</span>
             </button>
@@ -298,6 +301,67 @@ DASHBOARD_HTML_TEMPLATE = """<!DOCTYPE html>
                         <span id="ai-response-badge" class="bg-purple-500/20 text-purple-300 text-[10px] px-2 py-0.5 rounded font-mono">Gemini IA</span>
                     </div>
                     <div id="ai-chat-response-text" class="text-xs text-slate-200 leading-relaxed whitespace-pre-wrap"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ABA 6: FILTROS DE BUSCA (CARD 6.3) -->
+        <section id="tab-filters" class="tab-content hidden space-y-4">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h2 class="text-sm font-bold text-white">Controle Granular de Varredura e Filtros</h2>
+                    <p class="text-xs text-slate-400">Defina o que o bot deve priorizar cirurgicamente e o que deve ser descartado sem gastar conexões.</p>
+                </div>
+                <button onclick="saveSearchConfig()" class="text-xs bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-4 py-2 rounded-lg transition shadow">
+                    💾 Salvar Filtros de Busca
+                </button>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- Painel 1: Tags Prioritárias e Categorias -->
+                <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-5 space-y-4">
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <label class="text-xs font-semibold text-emerald-300">🎯 Tags Positivas (Bônus Sniper)</label>
+                            <span class="text-[10px] text-slate-500">Separadas por vírgula</span>
+                        </div>
+                        <p class="text-[11px] text-slate-400 mb-2">Projetos com estes termos recebem pontuação máxima e prioridade imediata.</p>
+                        <textarea id="filter-target-keywords" rows="3" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 font-mono-code"></textarea>
+                    </div>
+
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <label class="text-xs font-semibold text-slate-300">📁 Categorias do 99Freelas Monitoradas</label>
+                            <span class="text-[10px] text-slate-500">Slugs ou URLs</span>
+                        </div>
+                        <p class="text-[11px] text-slate-400 mb-2">Categorias varridas no feed contínuo (ex: web-mobile-e-software).</p>
+                        <input type="text" id="filter-categories" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono-code">
+                    </div>
+                </div>
+
+                <!-- Painel 2: Blacklist e Limites -->
+                <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-5 space-y-4">
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <label class="text-xs font-semibold text-rose-300">🚫 Blacklist de Palavras Proibidas</label>
+                            <span class="text-[10px] text-slate-500">Descarte Imediato</span>
+                        </div>
+                        <p class="text-[11px] text-slate-400 mb-2">Projetos com qualquer um destes termos são rejeitados silenciosamente sem gastar IA nem conexões.</p>
+                        <textarea id="filter-blacklist-keywords" rows="3" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs text-slate-200 focus:outline-none focus:border-rose-500 font-mono-code"></textarea>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Concorrência Máxima</label>
+                            <input type="number" id="filter-max-proposals" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500">
+                            <span class="text-[10px] text-slate-500">Descarte se > X propostas</span>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Orçamento Mínimo (R$)</label>
+                            <input type="number" id="filter-min-budget" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500">
+                            <span class="text-[10px] text-slate-500">Piso mínimo viável</span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </section>
@@ -905,6 +969,55 @@ DASHBOARD_HTML_TEMPLATE = """<!DOCTYPE html>
             }
         }
 
+        async function fetchSearchConfig() {
+            try {
+                const cfg = await fetch('/api/search/config').then(r => r.json());
+                const targetEl = document.getElementById('filter-target-keywords');
+                const blackEl = document.getElementById('filter-blacklist-keywords');
+                const catEl = document.getElementById('filter-categories');
+                const maxEl = document.getElementById('filter-max-proposals');
+                const minEl = document.getElementById('filter-min-budget');
+
+                if (targetEl) targetEl.value = (cfg.target_keywords || []).join(', ');
+                if (blackEl) blackEl.value = (cfg.blacklist_keywords || []).join(', ');
+                if (catEl) catEl.value = (cfg.categories || []).join(', ');
+                if (maxEl) maxEl.value = cfg.max_proposals || 15;
+                if (minEl) minEl.value = cfg.min_budget || 100;
+            } catch (e) {
+                console.error("Erro ao carregar filtros:", e);
+            }
+        }
+
+        async function saveSearchConfig() {
+            const targets = document.getElementById('filter-target-keywords').value;
+            const blacklist = document.getElementById('filter-blacklist-keywords').value;
+            const categories = document.getElementById('filter-categories').value;
+            const maxProps = document.getElementById('filter-max-proposals').value;
+            const minBudget = document.getElementById('filter-min-budget').value;
+
+            try {
+                const res = await fetch('/api/search/config', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        target_keywords: targets,
+                        blacklist_keywords: blacklist,
+                        categories: categories,
+                        max_proposals: maxProps,
+                        min_budget: minBudget
+                    })
+                }).then(r => r.json());
+
+                if (res.success) {
+                    alert("🎉 " + res.message);
+                } else {
+                    alert("Erro: " + res.error);
+                }
+            } catch (e) {
+                alert("Erro ao salvar filtros: " + e.message);
+            }
+        }
+
         function escapeHtml(s) {
             return (s || '').replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
         }
@@ -912,6 +1025,7 @@ DASHBOARD_HTML_TEMPLATE = """<!DOCTYPE html>
         // Init
         fetchData();
         fetchMonitorState();
+        fetchSearchConfig();
         setInterval(fetchData, 10000);
         setInterval(fetchMonitorState, 3000);
     </script>

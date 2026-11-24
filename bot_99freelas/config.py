@@ -40,6 +40,24 @@ class Settings(BaseModel):
     MIN_BUDGET: float = Field(default_factory=lambda: float(os.getenv("MIN_BUDGET", "100.0")))
     MARKET_DISCOUNT_PERCENTAGE: float = Field(default_factory=lambda: float(os.getenv("MARKET_DISCOUNT_PERCENTAGE", "20.0")))
 
+    # Parâmetros de Filtro e Busca Sniper (Card 6.3)
+    MAX_PROPOSALS: int = Field(default_factory=lambda: int(os.getenv("MAX_PROPOSALS", "15")))
+    TARGET_KEYWORDS: str = Field(
+        default_factory=lambda: os.getenv(
+            "TARGET_KEYWORDS",
+            "python, automacao, scraping, bot, api, backend, ia, dados, script, playwright, selenium, fastapi",
+        )
+    )
+    BLACKLIST_KEYWORDS: str = Field(
+        default_factory=lambda: os.getenv(
+            "BLACKLIST_KEYWORDS",
+            "tcc, monografia, digitacao, trabalho academico, formatacao abnt, artigo cientifico",
+        )
+    )
+    SEARCH_CATEGORIES: str = Field(
+        default_factory=lambda: os.getenv("SEARCH_CATEGORIES", "web-mobile-e-software")
+    )
+
     # Modo de Envio (Trava Human-in-the-Loop: falso por padrão para exigir aprovação)
     AUTO_SUBMIT_ENABLED: bool = Field(
         default_factory=lambda: os.getenv("AUTO_SUBMIT_ENABLED", "false").lower() in ("true", "1", "yes")

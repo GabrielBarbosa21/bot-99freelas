@@ -123,8 +123,22 @@ class FreelasMonitor:
             "Cookie": cookie_header or "",
         }
 
+        # Constrói URLs dinamicamente a partir das categorias configuradas (Card 6.3)
+        cfg = db.get_search_config() if db else {}
+        categories = cfg.get("categories", ["web-mobile-e-software"])
+        target_urls = []
+        for cat in categories:
+            cat = cat.strip()
+            if cat:
+                if cat.startswith("http"):
+                    target_urls.append(cat)
+                else:
+                    target_urls.append(f"https://www.99freelas.com.br/projects?categoria={cat}")
+        if not target_urls:
+            target_urls = self.FEED_URLS
+
         all_projects: List[Project] = []
-        for url in self.FEED_URLS:
+        for url in target_urls:
             if self.stop_requested:
                 break
             html = await self._fetch_url_with_retry(url, headers=headers)

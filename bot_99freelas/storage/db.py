@@ -172,6 +172,61 @@ class Database:
         self._save()
         return True, f"Proposta #{prop_id} aprovada com sucesso! Conexão debitada ({self.get_today_connections_used()}/{settings.MAX_CONNECTIONS_PER_DAY})."
 
+    def get_search_config(self) -> Dict[str, Any]:
+        """Retorna as configurações ativas de busca e filtros, mesclando DB e defaults do config."""
+        saved = self._data.get("search_config", {})
+
+        target_kw = saved.get("target_keywords")
+        if target_kw is None:
+            target_kw = [k.strip() for k in settings.TARGET_KEYWORDS.split(",") if k.strip()]
+
+        blacklist_kw = saved.get("blacklist_keywords")
+        if blacklist_kw is None:
+            blacklist_kw = [k.strip() for k in settings.BLACKLIST_KEYWORDS.split(",") if k.strip()]
+
+        categories = saved.get("categories")
+        if categories is None:
+            categories = [c.strip() for c in settings.SEARCH_CATEGORIES.split(",") if c.strip()]
+
+        return {
+            "target_keywords": target_kw,
+            "blacklist_keywords": blacklist_kw,
+            "categories": categories,
+            "max_proposals": int(saved.get("max_proposals", settings.MAX_PROPOSALS)),
+            "min_budget": float(saved.get("min_budget", settings.MIN_BUDGET)),
+        }
+
+    def save_search_config(self, new_config: Dict[str, Any]) -> Dict[str, Any]:
+        """Salva novas configurações dinâmicas de busca no banco local (Card 6.3)."""
+        current = self.get_search_config()
+        if "target_keywords" in new_config:
+            val = new_config["target_keywords"]
+            current["target_keywords"] = [k.strip() for k in val.split(",") if k.strip()] if isinstance(val, str) else list(val)
+
+        if "blacklist_keywords" in new_config:
+            val = new_config["blacklist_keywords"]
+            current["blacklist_keywords"] = [k.strip() for k in val.split(",") if k.strip()] if isinstance(val, str) else list(val)
+
+        if "categories" in new_config:
+            val = new_config["categories"]
+            current["categories"] = [c.strip() for c in val.split(",") if c.strip()] if isinstance(val, str) else list(val)
+
+        if "max_proposals" in new_config:
+            try:
+                current["max_proposals"] = int(new_config["max_proposals"])
+            except (ValueError, TypeError):
+                pass
+
+        if "min_budget" in new_config:
+            try:
+                current["min_budget"] = float(new_config["min_budget"])
+            except (ValueError, TypeError):
+                pass
+
+        self._data["search_config"] = current
+        self._save()
+        return current
+
     def reject_proposal(self, prop_id: int, reason: Optional[str] = None) -> Tuple[bool, str]:
         """Descarta uma proposta pendente sem debitar conexões."""
         proposals = self._data.get("proposals", [])

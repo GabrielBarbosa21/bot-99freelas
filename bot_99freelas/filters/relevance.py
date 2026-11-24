@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 from bot_99freelas.models.project import Project
 from bot_99freelas.config import settings
+from bot_99freelas.storage.db import db
 
 
 class FilterResult(BaseModel):
@@ -80,6 +81,22 @@ class ProjectFilter:
         warnings: List[str] = []
         text_to_check = f"{project.title} {project.description}".lower()
 
+        # Configurações dinâmicas de busca (Card 6.3)
+        cfg = db.get_search_config() if db else {}
+        active_blacklist = cfg.get("blacklist_keywords", [])
+        active_targets = cfg.get("target_keywords", [])
+        max_prop_limit = cfg.get("max_proposals", self.max_proposals)
+        min_budget_limit = cfg.get("min_budget", self.min_budget)
+
+        # 0. Blacklist Granular do Usuário (Card 6.3)
+        for bad_kw in active_blacklist:
+            if bad_kw and bad_kw.lower() in text_to_check:
+                return FilterResult(
+                    accepted=False,
+                    score=0.0,
+                    reasons=[f"Descartado por palavra-chave na blacklist: '{bad_kw}'."]
+                )
+
         # 1. Checagem de Spam / Golpes
         for pattern in self.SPAM_PATTERNS:
             if re.search(pattern, text_to_check):
@@ -104,11 +121,11 @@ class ProjectFilter:
         score = 65.0  # Base inicial equilibrada
 
         # 3. Concorrência Excessiva (Preservação de Conexões)
-        if project.proposals_count > self.max_proposals:
+        if project.proposals_count > max_prop_limit:
             return FilterResult(
                 accepted=False,
                 score=10.0,
-                reasons=[f"Muitas propostas ({project.proposals_count} > {self.max_proposals}). Desperdício de conexão para perfil inicial."]
+                reasons=[f"Muitas propostas ({project.proposals_count} > {max_prop_limit}). Desperdício de conexão para perfil inicial."]
             )
         elif project.proposals_count <= 5:
             score += 15.0
@@ -117,11 +134,11 @@ class ProjectFilter:
         # 4. Análise de Orçamento
         budget = project.budget_average
         if budget is not None:
-            if budget < self.min_budget:
+            if budget < min_budget_limit:
                 return FilterResult(
                     accepted=False,
                     score=20.0,
-                    reasons=[f"Orçamento médio (R$ {budget:.2f}) abaixo do piso mínimo configurado (R$ {self.min_budget:.2f})."]
+                    reasons=[f"Orçamento médio (R$ {budget:.2f}) abaixo do piso mínimo configurado (R$ {min_budget_limit:.2f})."]
                 )
             elif budget >= 500.0:
                 score += 10.0
@@ -167,6 +184,10 @@ class ProjectFilter:
         for pat, stack_name in self.TARGET_STACK_PATTERNS:
             if re.search(pat, text_to_check):
                 matched_stacks.append(stack_name)
+
+        for custom_kw in active_targets:
+            if custom_kw and custom_kw.lower() in text_to_check and custom_kw.capitalize() not in matched_stacks:
+                matched_stacks.append(custom_kw.capitalize())
 
         if matched_stacks:
             # Bônus calibrado: 1 stack = +15, 2+ stacks = +25 pts
