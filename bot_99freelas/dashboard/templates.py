@@ -434,9 +434,14 @@ DASHBOARD_HTML_TEMPLATE = """<!DOCTYPE html>
 
                 <div class="space-y-2">
                     <label class="block text-slate-300 font-semibold">Login Automático:</label>
-                    <button onclick="startBrowserLogin()" id="btn-start-login" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold py-2 rounded-lg transition border border-slate-700">
-                        🌐 Abrir Navegador para Login
-                    </button>
+                    <div class="flex space-x-2">
+                        <button onclick="startBrowserLogin()" id="btn-start-login" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold py-2 rounded-lg transition border border-slate-700">
+                            🌐 Abrir Navegador para Login
+                        </button>
+                        <button onclick="confirmManualLogin()" id="btn-confirm-login" title="Clique se você já concluiu o login na janela do navegador" class="bg-emerald-700 hover:bg-emerald-600 text-white font-semibold px-3 py-2 rounded-lg transition border border-emerald-600">
+                            ✓ Já Loguei
+                        </button>
+                    </div>
                     <div id="login-status-box" class="text-slate-500 font-mono-code text-[11px]">Status: Aguardando início...</div>
                 </div>
 
@@ -964,7 +969,8 @@ DASHBOARD_HTML_TEMPLATE = """<!DOCTYPE html>
         function updateSessionBadge(st) {
             const badge = document.getElementById('badge-session');
             const alert = document.getElementById('session-alert-banner');
-            if (st.authenticated) {
+            const isAuth = !!(st && (st.authenticated || st.session_valid));
+            if (isAuth) {
                 badge.className = "px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20";
                 badge.textContent = "🔑 99F Conectado";
                 if (alert) alert.classList.add('hidden');
@@ -975,12 +981,65 @@ DASHBOARD_HTML_TEMPLATE = """<!DOCTYPE html>
             }
         }
 
+        let loginPollTimer = null;
+
         async function startBrowserLogin() {
             const statusBox = document.getElementById('login-status-box');
-            if (statusBox) statusBox.textContent = "⏳ Abrindo navegador...";
+            const btn = document.getElementById('btn-start-login');
+            if (statusBox) statusBox.textContent = "⏳ Iniciando navegador...";
+            if (btn) btn.disabled = true;
+
             try {
                 const res = await fetch('/api/auth/login', { method: 'POST' }).then(r => r.json());
                 if (statusBox) statusBox.textContent = "🌐 " + (res.message || "Aguardando confirmação");
+
+                if (loginPollTimer) clearInterval(loginPollTimer);
+                loginPollTimer = setInterval(async () => {
+                    try {
+                        const st = await fetch('/api/auth/status').then(r => r.json());
+                        if (statusBox && st.status_message) {
+                            statusBox.textContent = "🌐 " + st.status_message;
+                        }
+                        if (st.authenticated || st.session_valid) {
+                            clearInterval(loginPollTimer);
+                            loginPollTimer = null;
+                            if (statusBox) statusBox.textContent = "✅ Sessão conectada com sucesso!";
+                            if (btn) btn.disabled = false;
+                            updateSessionBadge(st);
+                            setTimeout(() => {
+                                closeLoginModal();
+                                fetchData();
+                            }, 1200);
+                        } else if (!st.logging_in && !st.is_logging_in) {
+                            clearInterval(loginPollTimer);
+                            loginPollTimer = null;
+                            if (btn) btn.disabled = false;
+                        }
+                    } catch (e) {
+                        console.error(e);
+                    }
+                }, 2000);
+            } catch (e) {
+                if (statusBox) statusBox.textContent = "❌ " + e.message;
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        async function confirmManualLogin() {
+            const statusBox = document.getElementById('login-status-box');
+            if (statusBox) statusBox.textContent = "⏳ Verificando credenciais...";
+            try {
+                const res = await fetch('/api/auth/confirm', { method: 'POST' }).then(r => r.json());
+                if (statusBox) statusBox.textContent = "🌐 " + (res.message || "Verificando...");
+                setTimeout(async () => {
+                    const st = await fetch('/api/auth/status').then(r => r.json());
+                    updateSessionBadge(st);
+                    if (st.authenticated || st.session_valid) {
+                        alert("🎉 Sessão do 99Freelas confirmada com sucesso!");
+                        closeLoginModal();
+                        fetchData();
+                    }
+                }, 1000);
             } catch (e) {
                 if (statusBox) statusBox.textContent = "❌ " + e.message;
             }

@@ -91,6 +91,10 @@ def run_browser_login(
         threading.Thread(target=listen_for_enter, daemon=True).start()
 
     with sync_playwright() as p:
+        context = None
+        launch_errors = []
+
+        # Tentativa 1: Chrome nativo com perfil persistente
         try:
             context = p.chromium.launch_persistent_context(
                 user_data_dir=str(user_data_dir),
@@ -104,17 +108,63 @@ def run_browser_login(
                 ],
             )
         except Exception as e:
-            emit(f"⚠️ Erro ao abrir Chrome com perfil: {e}. Tentando sem perfil persistente...")
+            launch_errors.append(f"Chrome com perfil: {e}")
+
+        # Tentativa 2: Chromium embutido do Playwright com perfil persistente
+        if context is None:
             try:
-                browser = p.chromium.launch(
-                    channel="chrome",
+                emit("Tentando abrir Chromium embutido...")
+                context = p.chromium.launch_persistent_context(
+                    user_data_dir=str(user_data_dir),
                     headless=False,
-                    args=["--disable-blink-features=AutomationControlled", "--start-maximized"],
+                    viewport={"width": 1280, "height": 800},
+                    ignore_default_args=["--enable-automation"],
+                    args=[
+                        "--disable-blink-features=AutomationControlled",
+                        "--start-maximized",
+                    ],
                 )
-                context = browser.new_context()
-            except Exception as e2:
-                emit(f"❌ Não foi possível abrir o navegador Chrome: {e2}")
-                return False
+            except Exception as e:
+                launch_errors.append(f"Chromium com perfil: {e}")
+
+        # Tentativa 3: Microsoft Edge nativo do Windows
+        if context is None:
+            try:
+                emit("Tentando abrir Microsoft Edge...")
+                context = p.chromium.launch_persistent_context(
+                    user_data_dir=str(user_data_dir),
+                    channel="msedge",
+                    headless=False,
+                    viewport={"width": 1280, "height": 800},
+                    ignore_default_args=["--enable-automation"],
+                    args=[
+                        "--disable-blink-features=AutomationControlled",
+                        "--start-maximized",
+                    ],
+                )
+            except Exception as e:
+                launch_errors.append(f"Edge com perfil: {e}")
+
+        # Tentativa 4: Sem perfil persistente (em nova janela temporária isolada)
+        if context is None:
+            for ch in [None, "chrome", "msedge"]:
+                try:
+                    kwargs = {
+                        "headless": False,
+                        "args": ["--disable-blink-features=AutomationControlled", "--start-maximized"],
+                    }
+                    if ch:
+                        kwargs["channel"] = ch
+                    browser = p.chromium.launch(**kwargs)
+                    context = browser.new_context()
+                    break
+                except Exception as e:
+                    launch_errors.append(f"Launch {ch or 'chromium'}: {e}")
+
+        if context is None:
+            err_summary = "; ".join(launch_errors[-2:]) if launch_errors else "Navegador indisponível"
+            emit(f"❌ Não foi possível abrir nenhum navegador: {err_summary}")
+            return False
 
         page = context.pages[0] if context.pages else context.new_page()
 
@@ -258,9 +308,10 @@ class LoginManager:
     def get_status(self) -> Dict[str, Any]:
         session_health = session_manager.verify_session_health()
         return {
+            "authenticated": session_health["valid"],
+            "session_valid": session_health["valid"],
             "logging_in": self.is_logging_in,
             "status_message": self._status_message,
-            "session_valid": session_health["valid"],
             "cookie_count": session_health["cookie_count"],
             "session_message": session_health["message"],
         }
